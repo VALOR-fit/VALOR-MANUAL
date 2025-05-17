@@ -1,0 +1,270 @@
+
+\section{Setting up, running and validating an analysis}
+\label{sec:run analysis}
+
+
+\subsection{
+ Specifying event samples to be included in the fit
+}
+
+\subsection{
+ Specifying the list of true reaction modes for each fit sample
+}
+
+\subsection{
+ Specifying the binning scheme of each MC template
+}
+
+\subsection{
+ Filling-in VALOR MC templates using analysis DSTs
+}
+
+\subsection{
+ Specifying the list of systematic parameters
+}
+
+\subsection{
+ Specifying the action of each systematic parameter.
+}
+
+\subsection{
+ Specifying prior constraints for systematic parameters.
+}
+
+
+\subsection{
+ Writing out tables of nominal event rates
+}
+
+\underline{Executable:} make\_validation\_spectrum\_tables.py\\
+
+\underline{Code location:} \$VALOR\_EXPT/src/macros/spectra/single\_sample/\\
+
+{\color{red}Expand the following example to a proper command synopsis, 
+listing all the arguments and expected/allowed settings}
+
+\underline{Synopsis:}
+
+\begin{verbatim}
+% make_validation_spectrum_tables.py 
+  --mixing12 0.304 
+  --mixing13 0.0212 
+  --mixing23 0.528 
+  --cpv -1.601 
+  --dm12sq 7.53E-5 
+  --dm23sq 2.509E-3 
+  --file rates_dummy_AsimovA.tex 
+  --config analysis/dummy_wc_1sample.xml 
+  -d 5
+\end{verbatim}
+
+\subsection{
+ Write out MC templates and nominal event rate distributions 
+}
+
+\underline{Executable:} valor-write_pdf\\
+
+\underline{Code location:} 
+
+{\color{red}Expand the following example to a proper command synopsis, 
+listing all the arguments and expected/allowed settings}
+
+\begin{verbatim}
+Argument             | Type   |Opt| Default
+-------------------------------------------------------------------------
+physics-hypothesis   | str    | Y | 3f_osc
+fit-param-opt        | str    | Y | NONE
+config               | str    | N | -
+write-opt            | str    | Y | pdft_vf+pdft_rf+pdfcs_rf+pdfcs_vf+SB
+output-name          | str    | Y | valor_pdf
+mesg-thresholds      | str    | Y | verbosity.xml
+pot-override         | dbl    | Y | -999
+(force,no-force)-dst | {bool} | Y | no-force-dst
+\end{verbatim}
+
+\underline{Example:}
+
+\begin{verbatim}
+% valor-write_pdf 
+  --physics-hypothesis 3f_osc 
+  --input-mixing12 0.304 
+  --fix-mixing12 
+  --input-mixing13 0.0212 
+  --fix-mixing13 
+  --input-mixing23 0.528 
+  --fix-mixing23 
+  --input-cpv -1.601 
+  --fix-cpv 
+  --input-dm12sq 7.53E-5 
+  --fix-dm12sq 
+  --input-dm23sq 2.509E-3 
+  --fix-dm23sq 
+  --write-opt all+SB 
+  --config analysis/dummy_wc_1sample.xml 
+  --output-name write_dummy_all_sb
+\end{verbatim}
+
+% ..........................................................................................
+\subsection{
+ Plot nominal event rate distributions 
+}
+
+Use the $VALOR\_EXPT/src/macros/spectra/single\_sample/plot\_pdf.C macro, 
+with the output obtained by running valor\_dune-write\_pdf.  
+
+\underline{Synopsis:}
+
+{\color{red}Expand the following example to a proper command synopsis, 
+listing all the arguments and expected/allowed settings}
+
+\begin{verbatim}
+% valor -b -q 
+  $VALOR_EXPT/src/macros/spectra/single_sample/plot_pdf.C'(
+     "analysis/dummy_wc_1sample.xml",
+     "write_dummy_all_sb.root",
+     "valor",
+     "Ereco",
+     -999,
+     "",
+     "",
+     "SB",
+     "dummy_all_sb",
+     "pdf",
+     1000,
+     750,
+     3,
+     1.25,
+     180.
+     0,1)'
+\end{verbatim}
+
+% ..........................................................................................
+\subsection{
+ Generate and event rate distributions with systematic variations 
+}
+
+\begin{verbatim}
+valor-tweak_pdf_sigma_var
+  --output sigma_var_mode_[PARAMS] 
+  --config analysis/dummy_wc_1sample.xml
+  --physics-hypothesis 3f_osc 
+  --input-mixing12 0.304 
+  --input-mixing13 0.0212 
+  --input-mixing23 0.528 
+  --input-deltaCP -1.601 
+  --input-dm12sq 7.53E-5 
+  --input-dm23sq 2.509E-3 
+  --normal 
+  --kinevar Ereco 
+  --params allsyst
+\end{verbatim}
+
+
+% ..........................................................................................
+\subsection{
+ Plot event rate distributions with systematic variations 
+}
+
+% ..........................................................................................
+
+\subsection{
+ Plotting uncertainty bands on event rate distributions 
+}
+
+% ..........................................................................................
+\subsection{
+ Testing the action of systematic parameters (the {\it tick table})
+}
+
+% ..........................................................................................
+\subsection{
+ Generating fake data
+}
+
+% ..........................................................................................
+\subsection{
+ Generating and fitting toy-MC experiments
+}
+
+
+\underline{Executable:} valor\_dune-run\_fit \\
+
+\underline{Code location:} 
+
+{\color{red}Expand the following example to a proper command synopsis, 
+listing all the arguments and expected/allowed settings}
+
+\underline{Description of command-line arguments:}
+
+
+\begin{verbatim}
+Argument                    | Type   |Opt| Default
+-------------------------------------------------------------------------
+tag                         | str    | Y | toymc
+run                         | int    | Y |   0
+ntoymc                      | int    | Y |   1
+physics-hypothesis          | str    | Y |   3f_osc
+fit-param-opt               | str    | Y |   NONE
+param-values-option         | str    | Y |   randomize-all;prefit-errors
+fitter                      | str    | Y |   minuit
+config                      | str    | N |   -
+mesg-thresholds             | str    | Y |   verbosity.xml
+nthreads                    | int    | Y |   -1
+(with,without)-stat-fluct   | {bool} | Y |   with-stat-fluct
+(store,discard)-spectra     | {bool} | Y |   discard-spectra
+start-at-(true,central)     | {bool} | Y |   start-at-true
+(rethrow,accept)-unphysical | {bool} | Y |   rethrow-unphysical
+true-from-filename          | str    | Y |   NONE 
+true-from-objname           | str    | Y |   central_values
+pot-override                | dbl    | Y |   -999
+load-prior-from-file        | str    | Y |   none
+prior-fit-number            | int    | Y |   0
+prior-file                  | str    | N |   -
+tweak-parameter-set         | str    | Y |   none
+force-tweak-size            | dbl    | Y |   0
+flip-true-octant            | bool   | Y |   0
+(read,generate)-data        | {bool} | Y |   generate-data
+\end{verbatim}
+
+\underline{Example:}
+\begin{verbatim}
+% valor-run_fit 
+  --tag fit_minuit_dummy_1sample 
+  --second-octant 
+  --run 1 
+  --ntoymc 1 
+  --physics-hypothesis 3f_osc 
+  --param-values-option prefit-errors 
+  --fitter minuit 
+  --config analysis/dummy_wc_1sample.xml 
+  --mesg-thresholds verbosity.xml 
+  --without-stat-fluct 
+  --normal 
+  --load-prior-from-file 
+  - 
+  --pot-override -999 
+  --store-spectra 
+  --generate-data 
+  --seed-toys-stat 1000 
+  --seed-toys-syst 2000 
+  --seed-toys-osc 3000 
+  --seed-fitter 4000 
+  --seed-other 5000 
+  --prior-file priors/dummy_priors.xml
+\end{verbatim}
+
+
+% ..........................................................................................
+\subsection{
+ Fitting an input (fake or real) dataset
+}
+
+% ..........................................................................................
+\subsection{
+ Reading the standard output VALOR fit file
+}
+
+% ..........................................................................................
+\subsection{
+ Producing oscillation contours
+}

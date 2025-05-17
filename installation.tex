@@ -1,0 +1,34 @@
+
+
+\section{Installation}
+
+{\color{red} This describes how it should be, once SDK and DUNE-LBL are consolidated into the SDK}
+
+\subsection{SDK versioning scheme}
+
+\subsection{Obtaining the source code}
+
+\subsection{External dependencies}
+
+\subsection{Preparation of the build environment}
+
+Set the \$VALOR\_SDK environmental variable to point to the top directory of the SDK installation.
+
+\subsection{SDK configuration}
+
+\begin{verbatim}
+% cd $VALOR_SDK
+% ./configure --enable-fault-on-die --enable-debug
+\end{verbatim}
+
+Important: Where the last flag, --enable-negative-norm, should only ever be used during the systematic validation (when finished with this, the configure command must the re-run without these flags). This flags allows the parameters to take on either unphysical vales or go into regions where their behaviour may be invalid. We only use these options to test that the systematics are varying in an appropriate way.
+
+\subsection{Building the SDK}
+
+\begin{verbatim}
+% cd $VALOR_SDK
+% make -j
+\end{verbatim}
+
+\subsection{Post-installation tests}
+

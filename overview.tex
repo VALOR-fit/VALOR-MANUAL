@@ -1,0 +1,469 @@
+
+\section{The VALOR SDK}
+
+The development of a {\em physics parameterization} is required
+for the analysis and interpretation of any physics dataset.
+Typically, this parameterization takes the form of a likelihood function, $\lambda$,
+which depends on some aspects of the recorded data and, 
+in general, is a function of 
+M physics parameters $\vec{\theta}$ 
+(parameters of the physics hypothesis used for interpreting the data)
+and
+N nuisance (systematic) parameters $\vec{f}$.
+A successful generic analysis framework should facilitate the implementation of the analysis-specific choices on which aspects of a recorded dataset are to be included in the analysis (such as, for example, which kinematic distributions from which topological selections applied on which detector and/or running conditions), and it should allow the construction of corresponding predictions and the efficient parameterization of the effects of
+different physics hypotheses as of systematic effects on these predictions. 
+In general, these analysis-specific choices include:
+\begin{itemize}
+    \item The definition of topological event samples s.
+          In principle, different topological samples can be used for 
+          different detectors included in the analysis,
+          allowing, for example, the higher statistics near detector samples to be
+          further subdivided into several exclusive channels and
+          utilise correlations in order to disentangle systematic effects.
+    \item The definition of reconstructed and true kinematic spaces.
+          This includes the choice of kinematic space dimensionality,
+          the choice of kinematic quantities, and the choice of binning schemes. 
+          In principle, the choice of a reconstructed kinematic space
+          can be unique to each topological sample included in the fit.
+    \item The choice of generator-level labels (modes m), whose contributions to
+          the predicted event rate for a given topological sample are individually 
+          tracked. This choice can be unique to each topological sample included 
+          in the fit and it is crucial (along with the choice of kinematic quantities)
+          so that the application of systematic and physics effects can be 
+          finally targeted and expressed with the most natural degrees of freedom.
+    \item The choice of systematic parameters, the parameterization of the 
+          effect of systematic parameters on the computed event rates, and the
+          definition of prior systematic parameter constraints.
+\end{itemize}
+
+The general framework used in the VALOR SDK for constructing that physics parameterization, is outlined in Sec. \ref{S:valor_physics_parameterization}.
+
+\subsection{Framework for construction of the likelihood}
+\label{S:valor_physics_parameterization}
+
+In the VALOR SDK an arbitrary number of samples, each corresponding
+to a given i) detector (or sub-detector region), ii) beam configuration,
+iii) observed final state, and iv) kinematic phase space,
+can be fit jointly to determine the parameters of a physics hypothesis
+in the presence of uncertainties.
+
+A crucial element of parameter and error estimation in the context of
+an oscillation analysis
+is the efficient calculation of event rate predictions,
+both nominal and varied ones corresponding to specific combination of
+systematic effects and oscillation (or other new physics) hypotheses.
+Event rate predictions needs to be calculated for each topological event
+sample included in the fit, as a function of the observed kinematic
+quantities chosen for each sample.
+Predictions are constructed from Monte Carlo (MC) templates T,
+which represent the number of MC events 
+(after event selection cuts were applied on the output 
+of the full event simulation and reconstruction chain) 
+as function of several reconstructed and true quantities,
+as needed in order to apply physics and systematic effects
+as function of the most appropriate variables, 
+and in order to enable comparisons with the chosen
+observed kinematic distributions.
+Separate MC templates are constructed for each detector d, beam configuration b, 
+and sample s. Each MC template contains information on how the number of
+events is distributed in the same $N_{r}$-dimensional space {\bf $K_{r}$}  
+of reconstructed kinematic variables chosen for the fit samples.
+The same reconstructed kinematic variable binning scheme is used
+both for the MC templates and the fit distributions.
+The MC templates provide a mapping between reconstructed and true information.
+Separate templates are constructed for different true reaction modes m, and 
+each template contains information on how the number of events, 
+for each individual reconstructed bin,
+is distributed in a chosen $N_{t}$-dimensional space {\bf $K_{t}$}  
+of true kinematic variables.
+The true reaction modes, the true kinematic variables, and the kinematic variable
+binning schemes are defined so that the intended flavour dependencies, 
+reaction mode dependencies and  kinematic dependencies of systematics 
+and/or of considered physics hypotheses can be taken into account. 
+Therefore, summarizing all MC template dependencies, we can write
+\begin{equation}
+   T = T_{d;b;s;m}(r,t)
+\label{eq:template_deps}
+\end{equation}
+where r is a bin in the {\bf $K_{r}$} space of reconstructed kinematic variables, and
+t is a bin in the {\bf $K_{t}$}  space of true kinematic variables.
+A MC template $T_{d;b;s;m}$ is constructed from a MC sample corresponding to an
+exposure of $e_{d;b}^{MC}$ and then used to predict observations, or fit data,
+corresponding to an exposure of $e_{d;b}^{data}$. Here, we will assume that a
+scaling factor $e_{d;b}^{data}$ / $e_{d;b}^{MC}$ is absorbed in the definition of $T_{d;b;s;m}$.
+
+Using MC templates, the predicted number of events 
+$n_{d;b;s}^{pred}(r; \vec{\theta}; \vec{f})$ 
+in a $N_{r}$-dimensional reconstructed kinematic bin r, 
+for a specific sample s, seen in a detector d exposed in a beam configuration b,
+and for a particular set of 
+M physics parameters $\vec{\theta}$ = $(\theta_0, \theta_1,..., \theta_{M-1})$ and
+N nuisance (systematic) parameters $\vec{f}$ = $(f_0, f_1, ..., f_{N-1})$,
+is computed as
+\begin{equation}
+n_{d;b;s}^{pred}(r; \vec{\theta}; \vec{f}) =
+   \sum_{m} \sum_{t}  P_{d;b;m}(t; \vec{\theta}) \cdot R_{d;b;s;m}(r,t; \vec{f}) \cdot T_{d;b;s;m}(r,t)
+\label{eq:valor_npred}
+\end{equation}
+where 
+$P_{d;b;m}(t; \vec{\theta})$ encapsulates the effect of a physics hypothesis (e.g. neutrino oscillations in a 3-flavour framework), and $R_{d;b;s;m}(r,t; \vec{f})$ 
+parameterizes the response of a template bin to systematic variations.
+In principle, the range of m values in the above sum depends on the sample s.
+In addition, the number, type and dimensionality of true bins t is a function of both s and m. 
+The above will be assumed implicitly and not written explicitly.
+
+Once the construction of VALOR event rate predictions $n_{d;b;s}^{pred}(r; \vec{\theta}; \vec{f})$ is implemented, through the factorization described in 
+Eq. \ref{eq:valor_npred}, physics is extracted through a comparison with 
+observed (or simulated fake) data, which are denoted as $n_{d;b;s}^{obs}(r)$
+and represent the observed event rate
+for each detector d, beam configuration b, topological sample s
+and (multi-dimensional) reconstructed kinematic bin r.
+VALOR, typically, uses a binned likelihood ratio method and, therefore,
+attempts to minimize the quantity:
+\begin{equation}
+ -2 ln\lambda(\vec{\theta}; \vec{f}) = 
+    -2 ln\lambda_{0}(\vec{\theta}; \vec{f}) 
+    -2 ln\lambda_{p}(\vec{\theta}; \vec{f})
+\label{eq:valor_likelihood_ratio}
+\end{equation}
+where 
+\begin{equation}
+ -2 ln\lambda_{o}(\vec{\theta}; \vec{f}) = 2 \sum_{d,b,s,r}
+    \Big( 
+       n_{d;b;s}^{obs}(r) \cdot
+         ln \frac{n_{d;b;s}^{obs}(r)}{n_{d;b;s}^{pred}(r; \vec{\theta}; \vec{f})} 
+       + (n_{d;b;s}^{pred}(r; \vec{\theta}; \vec{f}) - n_{d;b;s}^{obs}(r))
+    \Big) 
+\label{eq:valor_likelihood_ratio_data}
+\end{equation}
+and $-2 ln\lambda_{p}$ is a penalty term encapsulating prior constraints
+from external data and theory.
+The advantage of the likelihood ratio method, 
+compared with the extended maximum likelihood method, is that in the
+large-sample limit, the quantity $-2 ln\lambda(\vec{\theta}; \vec{f})$
+has a $\chi^2$ distribution, and therefore it can be used as a goodness of fit test.
+Various strategies are employed for the minimisation of 
+$-2 ln\lambda(\vec{\theta}; \vec{f})$, the elimination of nuisance and/or
+interesting physics parameters, and the construction of confidence intervals.
+These statistical procedures implemented within the VALOR SDK are
+summarised in Sec. \ref{S:valor_stat}.
+
+
+\subsection{Computing effects of physics hypotheses}
+
+The effect of a physics hypothesis, such as, for example, neutrino oscillations,
+enters via the term $P_{d;b;m}(t; \vec{\theta})$ in Eq. \ref{eq:valor_npred}.
+This term is naturally only a function of true 
+kinematic variables and of neutrino flavour and/or true reaction mode 
+(both of which are encapsulated in m). For multi-detector fits, 
+the dependence on d and b reflects the dependence of $P$ on the appropriate 
+baseline (or on the distribution of  baselines, where that is appropriate).
+
+The oscillation probability $P_{d;b;m}(t; \vec{\theta})$ is evaluated in one
+of a number of different physics frameworks, each with its own set of parameters $\vec{\theta}$. Currently, the VALOR SDK supports oscillation probability calculations 
+in a 3-flavour framework, as well as 3+1 and 3+2 frameworks, considering matter-effects 
+in constant density matter and, optionally, non-standard interactions. 
+In addition, simpler 2-flavour oscillation probability calculations are also supported.
+The application of the term $P_{d;b;m}(t; \vec{\theta})$ requires some extra elaboration
+
+%
+%
+%
+
+\subsubsection{Standard 3-flavour oscillations}
+\label{sec:3fosc}
+
+%
+%
+\subsubsection*{3-flavour neutrino oscillation probabilities in vacuum}
+ 
+The 3-flavour neutrino oscillation probabilities in vacuum are calculated from equation 11 in \cite{kayser2005}:
+\begin{equation}
+P(\nu_{\alpha} \rightarrow \nu_{\beta}) = \delta_{\alpha \beta} - 4 \sum_{i>j} Re(U_{\alpha i}^{*} U_{\beta i} U_{\alpha j} U_{\beta j}^{*})
+\sin^{2} \left( \frac{\Delta m_{ij}^{2} L}{4E} \right) + 2 \sum_{i>j} Im(U_{\alpha i}^{*} U_{\beta i} U_{\alpha j} U_{\beta j}^{*})
+\sin \left(\frac{\Delta m_{ij}^{2} L}{2E} \right)
+\label{3flavouroscprobvacuum}
+\end{equation}
+In equation \ref{3flavouroscprobvacuum}, $\Delta m_{ij}^{2}$ = $m_{j}^{2}$ - $m_{i}^{2}$, L is the neutrino baseline, E is the neutrino energy, and U is the PMNS matrix in vacuum:
+
+\begin{equation}
+U = \left(
+\begin{array}{ccc}
+c_{12}c_{13} & c_{13}s_{12} & s_{13}e^{-i\delta} \\
+-c_{23}s_{12} - s_{13}s_{23}c_{12}e^{i\delta} & c_{12}c_{23} - s_{12}s_{13}s_{23}e^{i\delta} & c_{13}s_{23} \\
+s_{12}s_{23} - s_{13}c_{12}c_{23}e^{i\delta} & -s_{23}c_{12} - s_{12}c_{23}s_{13}e^{i\delta} & c_{13}c_{23}
+\end{array} \right)
+\label{PMNSmatrix}
+\end{equation}
+with $s_{12} = \sin(\theta_{12})$, $c_{12} = \cos(\theta_{12})$, etc. $P(\bar{\nu}_{\alpha} \rightarrow \bar{\nu}_{\beta})$
+is calculated by changing the sign of the third term in equation \ref{3flavouroscprobvacuum} (this assumes that CPT is
+conserved).
+
+%
+%
+\subsubsection*{3-flavour neutrino oscillation probabilities in constant density matter}
+
+All three neutrino flavours undergo neutral-current interactions with protons, neutrons and electrons in matter. These
+neutral-current interactions have identical amplitudes for all three flavours, and they produce no observable effects on
+the probabilities of oscillation between one flavour and another. However the oscillation probabilities are changed by
+coherent forward scattering of electron neutrinos in charged-current interactions with electrons in matter \cite{kayser2005}.
+
+Using natural units with $\hbar$ = c = 1, the time evolution of neutrino flavour states in vacuum is described by the
+Schr\"odinger equation:
+
+\begin{equation}
+i \frac{\partial \mathbf{\psi}}{\partial t} = H_{F} \mathbf{\psi}
+\end{equation}
+where
+\begin{equation}
+  \mathbf{\psi} =\left(
+\begin{array}{c}
+\psi_{e} \\
+\psi_{\mu} \\
+\psi_{\tau}
+\end{array} \right)
+\end{equation}
+and $H_{F}$ is the effective Hamiltonian in the flavour-state basis
+\begin{equation}
+H_{F} = \frac{1}{2E} U M U^{\dagger}
+\end{equation}
+with M defined by
+\begin{equation}
+M = \left(
+\begin{array}{ccc}
+0 & 0 & 0 \\
+0 & \Delta m_{21}^{2} & 0 \\
+0 & 0 & \Delta m_{31}^{2}
+\end{array} \right)
+\end{equation}
+The calculation of oscillation probabilities requires neutrino flight time to be converted to distance travelled,
+and this conversion assumes that neutrinos are highly relativistic. In
+this calculation, $U M U^{\dagger}$ is used for neutrinos, but its complex conjugate is used for antineutrinos. For neutrinos,
+the effects of the charged-current interactions between electron neutrinos and electrons are taken into account by adding the
+potential $2E \sqrt{2} G_{F} N_{e}$ to the real part of the first diagonal element of $U M U^{\dagger}$, where E is the
+neutrino energy, $G_{F}$ is the Fermi coupling constant, and $N_{e}$ is the number density of electrons in matter. For
+antineutrinos, this potential is subtracted from the real part of the first diagonal element of the complex conjugate of
+$U M U^{\dagger}$ (for further details see section 9.2 in \cite{giunti}).
+
+After the addition or subtraction of this potential, $U M U^{\dagger}$ (or its complex conjugate) is diagonalised. The eigenvalues
+of a Hermitian matrix are always real; they are calculated by solving the (cubic) characteristic equation using the method
+of del Ferro, Tartaglia and Cardano as described in \cite{kopp}. The differences between the eigenvalues are the effective
+mass-squared differences in matter. The eigenvectors are calculated using an algebraic method: one of the components is set
+to be 1.0 (real), and the other two components are calculated using two of the three simultaneous equations in
+$U M U^{\dagger} - \lambda I = 0$, where the $\lambda$ are the eigenvalues. After being normalised, the three eigenvectors
+become the columns of the effective mixing matrix in matter.
+
+The initial flavour state of the neutrino is represented by a 1$\times$3 column vector whose entries are complex; if, for
+example, the initial flavour state is a muon neutrino, this column vector is
+
+\begin{displaymath}
+\left(
+\begin{array}{c}
+0 \\
+1 \\
+0
+\end{array} \right)
+\end{displaymath}
+The vector representing the initial flavour state is then multiplied by the Hermitian conjugate of the matter mixing matrix
+to convert it to another 1$\times$3 complex column vector representing the initial mass states. These mass states are propagated
+to Super-K by multiplying the jth initial mass state by $\exp \left(\frac{-i \Delta m_{j1}^{2}L}{2E} \right)$, where the
+$\Delta m_{j1}^{2}$ are the mass-squared differences in matter, i.e.\ the differences between the eigenvalues of $U M U^{\dagger}$.
+This gives a new 1$\times$3 complex column vector representing the final mass states, and these are converted to the final flavour
+states by multiplying by the matter mixing matrix. The entries of the resulting 1$\times$3 complex column vector represent the
+amplitudes of each flavour at Super-K, and the corresponding oscillation probabilities are calculated as the moduli squared of these
+amplitudes.  
+
+%
+%
+\subsubsection*{Inputs to the 3-flavour neutrino oscillation probability calculations}
+
+When calculating the 3-flavour oscillation probabilities, the mixing angles can be input either in the form $\sin^{2}(2 \theta_{ij})$
+or as $\sin^{2}(\theta_{ij})$. $\sin(\theta_{ij})$ and $\cos(\theta_{ij})$ are calculated from the input values, and these are used in
+turn to calculate the elements of $U$. The ``solar'' mass-squared difference is input as $\Delta m_{21}^{2}$, and this is $>$ 0 for
+both mass hierarchies. The ``atmospheric''
+mass-squared difference is input either as $|\Delta m_{32}^{2}|$ or using a definition introduced by G.\ Fogli, E.\ Lisi et al.\ in
+\cite{LisiGlobalAnalysis}:
+\begin{equation}
+\Delta m^{2}_{FL} = m_{3}^{2} - \frac{m_{2}^{2} + m_{1}^{2}}{2}
+\end{equation}
+The quantity denoted $\Delta m^{2}_{FL}$ is useful since its absolute value is the same for both mass hierarchies, and only its sign
+changes. If the atmospheric mass-squared difference is input as $\Delta m^{2}_{32}$, the mass hierarchy is set using the sign of
+$\Delta m_{32}^{2}$; this is positive for the normal mass hierarchy (NH) and negative for the inverted mass hierarchy (IH). In this case,
+$\Delta m_{31}^{2}$ is not input but is calculated as $\Delta m_{31}^{2}$ = $\Delta m_{21}^{2}$ + $\Delta m_{32}^{2}$ for both hierarchies.
+If the atmospheric mass-squared difference is input as $\Delta m^{2}_{FL}$, the mass hierarchy is set using the sign of $\Delta m^{2}_{FL}$.
+Then $\Delta m_{32}^{2}$ and $\Delta m_{31}^{2}$ are calculated from the input values of $\Delta m^{2}_{FL}$ and $\Delta m_{21}^{2}$.
+
+%
+%
+\subsubsection*{Validation of the 3-flavour oscillation probabilities}
+
+The 3-flavour oscillation probabilities in vacuum were checked using an alternative formulation in equations 13.13 and 13.14
+in the PDG review \cite{pdgreview}:
+\begin{equation}
+P(\nu_{\alpha} \rightarrow \nu_{\beta}) = \sum_{j} |U_{\beta j}|^{2} |U_{\alpha j}|^{2} + 2 \sum_{j>k} |U_{\beta j} U_{\alpha j}^{*} U_{\alpha k} U_{\beta k}^{*}|
+\cos \left(\frac{\Delta m_{jk}^{2} L}{2E}  - \phi_{\beta \alpha;jk}  \right)
+\label{3flavouroscprobvacuumpdg}
+\end{equation}
+where $\phi_{\beta \alpha;jk}$ = arg($U_{\beta j} U_{\alpha j}^{*} U_{\alpha k} U_{\beta k}^{*}$). $P(\bar{\nu}_{\alpha} \rightarrow \bar{\nu}_{\beta})$
+is calculated by changing the sign of $\phi_{\beta \alpha;jk}$ in the argument of the cosine. The probabilities calculated from equation \ref{3flavouroscprobvacuumpdg}
+agreed with those calculated from equation \ref{3flavouroscprobvacuum} to 14 significant figures.
+
+Several checks of the oscillation probabilities in constant density matter are written into the code that calculates them:
+\begin{enumerate}
+\item The eigenvalues of $U M U^{\dagger}$ are checked by comparing their sum with the trace of the matrix.
+\item Each normalised eigenvector is multiplied in turn by each of the 3 matrices formed by subtracting the eigenvalues from the real parts of the
+diagonal elements of $U M U^{\dagger}$, and a check is made of the differences between these products and a zero vector.
+\item A check is made that the normalised eigenvectors of $U M U^{\dagger}$ are orthogonal by calculating the scalar product between them (the scalar product of two
+complex vectors is the product of the first vector with the complex conjugate of the second vector).
+\item A check is also made that the Hermitian conjugate of the mixing matrix in matter is equal to the inverse of the matrix. This is done by multiplying the
+mixing matrix in matter by its Hermitian conjugate, and checking the differences between the product and an identity matrix.
+\end{enumerate}
+
+The values of the oscillation probabilities in constant density matter were checked by comparing them with equivalent probabilities calculated by an
+independently-written Fortran program \cite{sloan}. This Fortran program uses different algorithms, and calculates numerically the eigenvalues and
+eigenvectors of $U M U^{\dagger}$. Nevertheless there was very good agreement between the two calculations of the probabilities, with the
+fractional differences being $\approx 2 \times 10^{-6}$.
+
+The values of the matter oscillation probabilities were also compared with those given by Prob3++ \cite{Prob3}, and the fractional differences were
+$\approx$ 1-5 $\times$ 10$^{-4}$. The comparison plots can be seen in \cite{Compwithprob3}.
+
+%
+%
+\subsubsection*{Accuracy of the 3-flavour oscillation probabilities}
+
+As stated in section \ref{3flavourvalidation}, the 3-flavour oscillation probabilities in vacuum agreed to 14 significant figures between the two
+formulations.
+
+An estimate of the accuracy of the 3-flavour oscillation probabilities in constant density matter was made in three separate ways:
+\begin{enumerate}
+\item The matter probabilities for zero density were compared with the vacuum probabilities; there was good agreement, with the fractional differences being
+$\approx$ 2-5 $\times$ 10$^{-6}$.
+\item The probabilites given when calculating the eigenvectors with simultaneous equations 1 and 2 in $U M U^{\dagger} - \lambda I = 0$ were compared
+with the probabilities given when calculating the eigenvectors with simultaneous equations 2 and 3. The fractional differences between these two
+calculations were again $\approx$ 2-5 $\times$ 10$^{-6}$.
+\item The sum of three matter probabilities, for example P($\nu_{\mu} \rightarrow \nu_{e}$) + P($\nu_{\mu} \rightarrow \nu_{\mu}$) +
+P($\nu_{\mu} \rightarrow \nu_{\tau}$), was compared with 1.0; again there was good agreement, and the differences were $\approx 2 \times 10^{-6}$.
+\end{enumerate}
+
+This means that the matter oscillation probabilities should be considered to be accurate to 5 decimal places. The accuracy of the matter probabilities
+is less than that of the vacuum probabilities due to the method of calculation of the eigenvectors. This involves calculations of the form
+\begin{displaymath}
+\frac{(ab - cd)}{(ef - gh)}
+\end{displaymath}
+where a, b, c, etc.\ are elements of $U M U^{\dagger} - \lambda I$. Frequently ab is close in value to cd, which means that (ab - cd) is much smaller than ab or
+cd, and the same applies to (ef - gh). However the advantage of the method of calculation of the eigenvectors described in section \ref{matterosc} is that it allows
+the worst of these cancellation errors to be avoided; this can be done by calculating the eigenvectors using different pairs of simultaneous equations in
+$U M U^{\dagger} - \lambda I = 0$ for different combinations of the oscillation parameters. In practice, the eigenvectors are nearly always calculated
+using equations 1 and 2 in $U M U^{\dagger} - \lambda I = 0$, but equations 2 and 3 are used when 3.10 $<$ $\delta_{CP}$ $<$ 3.18 and
+$\sin^{2}(2 \theta_{13})$ $>$ $10^{-8}$ in order to avoid such cancellation errors.  
+
+%
+%
+\subsubsection*{Application of oscillation probabilities to MC templates}
+
+In general, in a 3-flavour analysis,
+the CC MC templates constructed from the unoscillated MC samples are 
+weighted with the corresponding survival probability: 
+The $\nu_{\mu}$ CC templates are weighted with $P(\nu_{\mu}\rightarrow \nu_{\mu})$,
+the $\bar{\nu}_{\mu}$ CC templates are weighted with $P(\bar{\nu}_{\mu}\rightarrow \bar{\nu}_{\mu})$,
+the $\nu_{e}$ CC templates are weighted with $P(\nu_{e}\rightarrow \nu_{e})$, and
+the $\bar{\nu}_{e}$ CC templates are weighted with $P(\bar{\nu}_{e}\rightarrow \bar{\nu}_{e})$,
+The CC MC templates made from the {\em oscillated (or swapped)} $\nu_{e}$ event sample
+(a $\nu_{e}$ event sample that was generated with the $\nu_{\mu}$ flux, 
+as if all $\nu_{\mu}$'s converted to $\nu_{e}$) are weighted with $P(\nu_{\mu}\rightarrow \nu_{e})$.
+Similarly, if there was any, 
+CC MC templates made from an {\em oscillated} $\bar{\nu}_{e}$ event sample 
+would be weighted with $P(\bar{\nu}_{\mu}\rightarrow \bar{\nu}_{e})$,
+CC MC templates made from an {\em oscillated} ${\nu}_{\mu}$ event sample 
+would be weighted with $P({\nu}_{e}\rightarrow {\nu}_{\mu})$, and
+CC MC templates made from an {\em oscillated} $\bar{\nu}_{\mu}$ event sample 
+would be weighted with $P(\bar{\nu}_{e}\rightarrow \bar{\nu}_{\mu})$.
+Contributions from $\nu_{\tau}$ CC and $\bar{nu}_{\tau}$ CC are neglected as,
+even when they are produced via oscillations, have a negligible effect on
+observed distributions due to the high energy threshold for $\tau$ production.
+The same oscillation parameters are used for both neutrino and anti-neutrino oscillations. 
+Oscillations are not applied to the NC MC templates since, effectively, 
+they serve as proxies for the mixtures of $\nu_{e} + \nu_{\mu} + \nu_{\tau}$ NC and
+$\bar{\nu}_{e} + \bar{\nu}_{\mu} + \bar{\nu}_{\tau}$
+MC templates which are unchanged under 3-flavour oscillations.
+
+
+%
+%
+%
+
+\subsubsection{Oscillations in a framework with N sterile neutrinos}
+\label{sec:3pNosc}
+
+%
+%
+%
+
+\subsubsection{Non-standard interactions}
+\label{sec:nsi}
+
+As described in \ref{sec:3fosc}, neutrino oscillation probabilities are modified by forward coherent scattering of neutrinos off electrons in the matter they propagate through. Additional, flavour-dependent interactions could exist, leading to further modification of oscillation probabilities. These hypothetical interactions, which are usually referred to as Non-Standard Interactions (NSI), could modify the L/E dependence, or couple charged leptons and neutrinos of different flavours.
+
+NSI are described by the following addition to the SM Lagrangian density
+\begin{equation}
+  \mathcal{L}_{NSI} = -2 \sqrt{2} G_{F} 
+    \epsilon_{\alpha \beta}^{fc}
+    \Big( \bar{f} \gamma^{\mu} P_{c} f \Big)
+    \Big( \bar{\nu}_{\alpha} \gamma_{\mu} P_{L} \nu_{\beta} \Big)
+\label{eq:nsi_lagrangian_density}
+\end{equation}
+where $\epsilon_{\alpha \beta}^{fc}$ are parameters expressing the size
+of deviation from SM interactions for neutrinos of flavours $\alpha$,$\beta$,
+and chirality $c$. Typically, in experimental NSI searches, the large parameter space
+is reduced to a smaller set of effective parameters ($\epsilon_{\alpha \beta}$) by
+summing $\epsilon_{\alpha \beta}^{fc}$ over chirality and fermion flavour
+\begin{equation}
+\epsilon_{\alpha \beta} = \sum_{f,c} \epsilon_{\alpha \beta}^{fc} \frac{N_f}{N_e}
+\label{eq:nsi_epsilon_ab}
+\end{equation}
+where $N_f$ is the number density of fermion $f$, and
+$N_e$ is the electron number density.
+
+In the 3-flavour neutrino oscillation calculation, 
+NSI effects enter as an additional contribution to the standard Hamiltonian shown in Eq.\ref{}. 
+\begin{equation}
+A_{matter} = 2EV \left(
+\begin{array}{ccc}
+1+\epsilon_{ee}  & \epsilon_{e\mu}^{\star} & \epsilon_{e\tau}^{\star} \\
+\epsilon_{e\mu}  & \epsilon_{\mu\mu}       & \epsilon_{\mu\tau}^{\star} \\
+\epsilon_{e\tau} & \epsilon_{\mu\tau}      & \epsilon_{\tau\tau}
+\end{array} \right)
+\end{equation}
+
+%The new contribution has 6 new free parameters.
+
+\subsection{Framework for parameterization of systematic effects}
+
+Systematic effects enter via the term $R_{d;b;s;m}(r,t; \vec{f})$ in Eq. \ref{eq:valor_npred}.
+Typically, but not always, the response $R_{d;b;s;m}(r,t; \vec{f})$ 
+factorises and it can be written as 
+\begin{equation}
+  R_{d;b;s;m}(r,t; \vec{f}) = \prod_{i=0}^{N-1} R^{i}_{d;b;s;m}(r,t; f_i)
+\label{eq:valor_response_factorization}
+\end{equation}
+For several systematics the response is linear and, therefore, 
+\begin{equation}
+  R^{i}_{d;b;s;m}(r,t; f_i) \propto f_i
+\label{eq:valor_linear_response}
+\end{equation}
+For non-linear systematics, the response function $R^{i}_{d;b;s;m}(r,t; f_i)$ 
+is usually pre-computed in the [-5$\sigma$, +5$\sigma$] range of the parameter $f_i$ 
+and it is represented internally using Akima or cubic splines.
+Values of systematic parameters that give a negative predicted number of events 
+in any reconstructed bin in any interaction mode are not allowed.
+
+
+\subsection{Statistical tools}
+\label{S:valor_stat}
+
+\subsubsection{Parameter estimation}
+
+\subsubsection{Elimination of nuisance parameters}
+
+\subsubsection{Construction of confidence intervals}
+

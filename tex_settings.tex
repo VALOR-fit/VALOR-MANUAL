@@ -1,0 +1,66 @@
+
+
+%% The graphicx package provides the includegraphics command.
+\usepackage{graphicx}
+%% The amssymb package provides various useful mathematical symbols
+\usepackage{amssymb}
+%% The amsthm package provides extended theorem environments
+%% \usepackage{amsthm}
+%% The subfiles package allows to split the report into a number of
+%% smaller TeX files that can be included via \subfile{some_path/some_file.tex}
+\usepackage{subfiles}
+%% 
+\usepackage{color}
+\usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+\usepackage{import}
+\usepackage{enumitem}
+\usepackage{appendix}
+
+%% helpful for writing-out code
+\usepackage{listings}
+\usepackage{subfigure}
+%% The lineno packages adds line numbers. Start line numbering with
+%% \begin{linenumbers}, end it with \end{linenumbers}. Or switch it on
+%% for the whole article with \linenumbers after \end{frontmatter}.
+\usepackage{lineno}
+\usepackage{longtable}
+\usepackage{adjustbox}
+%% natbib.sty is loaded by default. However, natbib options can be
+%% provided with \biboptions{...} command. Following options are
+%% valid:
+
+%%   round  -  round parentheses are used (default)
+%%   square -  square brackets are used   [option]
+%%   curly  -  curly braces are used      {option}
+%%   angle  -  angle brackets are used    <option>
+%%   semicolon  -  multiple citations separated by semi-colon
+%%   colon  - same as semicolon, an earlier confusion
+%%   comma  -  separated by comma
+%%   numbers-  selects numerical citations
+%%   super  -  numerical citations as superscripts
+%%   sort   -  sorts multiple citations according to order in ref. list
+%%   sort&compress   -  like sort, but also compresses numerical citations
+%%   compress - compresses without sorting
+%%
+
+\usepackage[capitalise]{cleveref}
+
+%% \biboptions{comma,round}
+
+% \biboptions{}
+\usepackage{float}
+\journal{Journal Name}
+
+\newcommand{\nue}{\nu_{e}}
+\newcommand{\numu}{\nu_{\mu}}
+\newcommand{\nutau}{\nu_{\tau}}
+\newcommand{\nuebar}{\bar{\nu}_{e}}
+\newcommand{\numubar}{\bar{\nu}_{\mu}}
+\newcommand{\nutaubar}{\bar{\nu}_{\tau}}
+
+\definecolor {cadmiumred}     {rgb} {0.89, 0.00, 0.13}
+\definecolor {cadmiumgreen}   {rgb} {0.00, 0.42, 0.24}
+\definecolor {capri}          {rgb} {0.00, 0.75, 1.00}
+\definecolor {amber}          {rgb} {1.00, 0.49, 0.00}

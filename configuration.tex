@@ -1,0 +1,385 @@
+
+\section{Description of configuration files}
+
+Configuration XML files are defined within each experiments specific application of VALOR (`\$VALOR\_EXPT/config/'). These can specify:
+\begin{itemize}
+    \item Event samples
+    \item Reconstructed kinematic distribution
+    \item Modes (different generator-level MC-truth interaction modes)
+    \item MC-truth kinematical distribution
+    \item Systematic parameters (and prior errors/input correlations)
+    \item How each systematic parameter affects a kinematical bin in each MC template for each mode of every fit sample
+    \item Physics hypothesis
+\end{itemize}
+
+The full lists of what each of these can be defined as within the configuration file can be found in either `\$VALOR\_SDK/src/valor/Conventions/', as described in \ref{sec:sdk/conventions}, or in further directories of `\$VALOR\_EXPT/config/'.
+
+This section will detail the structure and organisation of the different XMLs within VALOR.
+
+
+\subsection{Main analysis configuration}
+
+The main analysis configuration XML is located here:
+\begin{center}
+`\$VALOR\_EXPT/config/analysis'.     
+\end{center}
+All of these XMLs contains an element list where there is an element for each relevant detector/beam/sample setup. Most then have a block to define parameter definitions. This can be empty for void analyses when systematics are not being considered but usually would contain at least physics parameters relevant to the analysis, e.g. sterile parameters. For an analysis involving systematics this block contains the lists of systematic parameters to be included (splines and covariance matrices). The final potential block is the covariance systematics block. Within the systematics block there are groups for each type of systematics (flux covariance, flux response functions, etc.) to define their covariance matrices. The matrices for the splines are $n \times n$, where $n$ is the number of systematic parameters to be contained within it and are constructed to be 100\% uncorrelated with all the diagonal elements equal to $1$. Each group has a name (eg. ``flux''), a format XML listing the relevant parameters, and the covariance matrix(es) root file(s). An overview of this layout is presented below with further details on each section of the configuration XML given after.
+
+\subsubsection{Overview}
+\label{sec:config/analysis/overview}
+
+{\color{capri}
+\begin{verbatim}
+
+<?xml version="1.0"?>
+
+<valor> 
+
+  <element_list name="list_name">
+      <element name="element_name">
+        ...
+      </element>
+      ...
+  </element_list>
+
+  <parameter_definitions>
+     ...
+  </parameter_definitions>
+
+  <systematics name="\textcolor{red}{systematics_list_name}">
+     ...
+  </systematics>
+
+</valor> 
+
+\end{verbatim}
+}
+
+
+
+\subsubsection{Element list block}
+
+The element list contains every detector/beam/sample setup that you wish to jointly fit over. The full list of options can be found/added to here:
+\begin{itemize}
+    \item \textbf{Detector:} `\$VALOR\_SDK/src/valor/Conventions/Detector.h'
+    \item \textbf{Beam:} `\$VALOR\_SDK/src/valor/Conventions/BeamConf.h'
+    \item \textbf{Sample:} `\$VALOR\_SDK/src/valor/Conventions/Sample.h'
+    \item \textbf{Observable:} `\$VALOR\_SDK/src/valor/Conventions/KineSpace.h'
+\end{itemize}
+If you add to these lists, do so at the end to not mess up the enumeration and ensure changes are made at ever step of .h/.cxx file. 
+
+Options defined within `\$VALOR\_EXPT/config/' are:
+\begin{itemize}
+    \item \textbf{Data:} `data/*.xml'
+    \item \textbf{MC:} `mc/*.xml'
+    \item \textbf{Binning:} `binning/*.xml'
+\end{itemize}
+
+The Data and MC configuration XMLs are defined in detail in \cref{sec:config/data,sec:config/mc}. The Data and MC classes are found in `\$VALOR\_SDK/src/valor/FitElements/' and define how the data and MC options are processed for a variety of functions within VALOR respectively.
+
+When including configuration or root files, VALOR will read the file path one of two ways depending on whether the initial character is a `/'. If the included file doesn't begin with a `/' then it is defined as incomplete and VALOR will expand it using `\$VALOR\_SDK/src/valor/Utilities/UtlXML.cxx'. As an example, when including the MC XML within the main analysis configuration, only `mc/relevant\_mc\_config.xml' needs to be included and VALOR will expand the full path the `\$VALOR\_EXPT/config/mc/relevant\_mc\_config.xml'.
+
+{\color{capri}
+\begin{verbatim}
+
+  <element_list name="dummy_water_cherenkov_experiment_1_sample">
+
+    <element name="fhc_1rmu">
+      <detector>     superk                              </detector>
+      <beam>         JPARC_FHC                           </beam>
+      <sample>       1rmu                                </sample>
+      <observable>   Ereco                               </observable>
+      <data>                                             </data>
+      <mc>           mc/dummy_mulike.xml                 </mc>           
+      <data_class>   valor::GenericSingleSampleFitData   </data_class>
+      <model_class>  valor::GenericSingleSampleFitModel  </model_class>
+      <binning>      binning/dummy_mulike_bins.xml       </binning>      
+    </element>
+
+  </element_list>
+
+\end{verbatim}
+}
+
+\subsubsection{Parameter definitions block}
+
+The parameter definitions block contains XML files for each set of (new) physics and systematic parameters to be included. These are found in `\$VALOR\_EXPT/config/params/*.xml'. How these are read is described in detail in `\$VALOR\_SDK/src/valor/Conventions/Parameter.h'. Below, the key points are highlighted.
+
+The physics parameter XMLs specify values for physics parameters which are read when populating the fit parameter list. Note that the values and ranges specified here do not specify the priors, as priors are specified in config files of a different format (see `\$VALOR\_EXPT/config/priors/'). The XML defines the parameter's name, limits, and initial value (eg. global best fit) amongst other properties. The structure of these XMLs is covered in \cref{sec:config/params}.
+
+{\color{capri}
+\begin{verbatim}
+
+  <parameter_definitions>
+    <!-- Make sure that any config file containing default values is read first! -->
+    <filename desc="default_physics_params"> params/default_physics_parameter_values.xml      </filename>
+    <filename desc="systematic_params">      params/dummy_parameter_specification.xml         </filename>
+    <filename desc="physics_params">         params/dummy_physics_parameter_specification.xml </filename>
+  </parameter_definitions>
+
+\end{verbatim}
+}
+
+\subsubsection{Systematics error constraints and tuned values block}
+
+For the groups associated with the response function parameters, three sections containing root files are included; the covariance matrix, the untuned values, and the initial values. For the matrix blocks for the normalisation (and detector) systematic parameters, only the covariance matrix is included. The format for the former setup is shown below.
+
+In each group's format XML, there is a systematic list of every parameter associated with that group. The number of parameters, $n$, must equal the size of the matrix, $n \times n$, and the parameters must be listed in the order they are in the matrix.
+
+{\color{capri}
+\begin{verbatim}
+
+  <systematics name="dummy">
+
+    <group name="nd">
+      <!-- This is the list of param names (to be read by AsStringSimple or AsString) in the input matrix.
+           The order of params in this list must be the same as the order of params in the matrix.-->
+      <format> dummy_nd_constrained_params.xml </format>
+      
+      <covariance_matrix>
+        <filename> dummy_data/cov/dummy_covariance_matrix.root </filename>
+        <objname>  cov                                         </objname>
+        <objtype>  TMatrixD                                    </objtype>
+      </covariance_matrix>
+
+      <untuned_values>
+        <filename> dummy_data/cov/dummy_covariance_matrix.root </filename>
+        <objname>  untuned_central_values                      </objname>
+      </untuned_values>
+
+      <initial_values>
+        <filename> dummy_data/cov/dummy_covariance_matrix.root </filename>
+        <objname>  params                                      </objname>
+      </initial_values>
+    </group>
+
+  </systematics>
+
+\end{verbatim}
+}
+
+
+\subsection{Parameter definitions}
+\label{sec:config/params}
+
+
+The systematic parameter XMLs are structured with a list of parameters where each parameter has it's own block of information. This block contains a whole host of information including the parameter's name, in various formats (for plotting etc), the range of kinematic observable that parameter is applied to, the numerical limits of the parameter and the number of sigma it is allowed to float within the fit (normally $[-5\sigma,+5\sigma]$). An example for a response parameter is given below, for a normalisation parameter the change to be made is the `type' node. Further properties can be found in in `\$VALOR\_SDK/src/valor/Conventions/Parameter.h'.
+
+Response example:
+{\color{capri}
+\begin{verbatim}
+
+  <param>
+    <name>
+      <simple>  horncurrent_FluxUnisim </simple>
+      <long>    Horn current </long>
+      <rootex>  Horn current </rootex>
+      <tex>     Horn current </tex>
+    </name>
+    
+    <apply_to_range>
+      <Etrue> 0, 10. </Etrue>
+      <Ereco> 0, 10. </Ereco>
+    </apply_to_range>
+    
+    <type>  response  </type>
+    
+    <categories>
+      <category> flux </category>
+      <category> flux_uncorr </category>
+    </categories>
+    
+    <apply_to>
+      <detector>    allsbn    </detector>
+      <beam>        fhc       </beam>
+      <selection>   all       </selection>
+      <reac_type>   all       </reac_type>
+      <flav_init>   all       </flav_init>
+      <flav_final>  all       </flav_final>
+      <target>      all       </target>
+    </apply_to>
+    
+    <limits>  -inf, inf  </limits>
+    
+    <update_from_cov_matrix> true  </update_from_cov_matrix>
+    <range_mode>             sigma </range_mode>            
+    <range>                  -5,5  </range>                 
+
+  </param>
+    
+\end{verbatim}
+}
+
+\subsection{MC inputs}
+\label{sec:config/mc}
+
+The MC XML is set up to give information regarding the beam and detector configurations, the MC templates (DSTs), the relevant modelists and binning scheme, and splines (if doing an analysis with systematics) These are all explored in the following sections.
+
+\subsubsection{Event samples}
+
+The MC templates are provided in VALOR DST format which is a type of ROOT TTree containing a wide range of relevant information. See \ref{S:valor_physics_parameterization} for further details.
+
+{\color{capri}
+\begin{verbatim}
+
+<mc>
+  <using_dst_format> 
+     true 
+  </using_dst_format> 
+
+  <dst> 
+    <bnb_fhc>
+      <filename> dummy_data/dsts/valor_sbncode_dummy_minidst_mc.root </filename>
+       <objname> valor_sbn_minidst </objname> 
+       <objtype> TTree    </objtype> 
+    </bnb_fhc>
+  </dst>
+  
+  <!-- in kg, for calculating CCinc xsec-->
+  <interaction_mass> 
+    -999 
+  </interaction_mass>
+
+</mc>
+
+\end{verbatim}
+}
+
+\subsubsection{Normalisation}
+
+\subsubsection{Response functions}
+
+This is the last section that can be included in the MC XML. It defines the location and naming scheme of the response functions for VALOR to look at. Details of the spline's setup and the meaning of certain properties are given in the example below.
+
+{\color{capri}
+\begin{verbatim}
+
+<splines>
+  <folder>          dummy_data/xsec/valor_format                  </folder>
+  <pattern>         splines_spline2018v1_[BEAM]_[SAMPLE].root     </pattern>
+  <stored_as>       TObjArray                                     </stored_as>
+  <array_pattern>   spl_[MODE]_[PARAM]                            </array_pattern>
+  <method>          curr_tweak                                    </method>           
+  <!-- This uses weight = spline->Eval(current - untuned) -->
+  <type>            TSpline3                                      </type>            
+  <!-- Can use either ROOT's TSpline3, or various GSL splines. See Interpolator.h -->
+  <sort_knot_order> false                                         </sort_knot_order> 
+  <!-- Sometimes we get splines with out-of-order knots. These knots are ignored by default. Setting this to true re-orders the splines so that all the knots are in order, which changes the spline behaviour -->
+  <within_limits>   true                                          </within_limits>    
+  <!-- Setting this to false allows extrapolation beyond the spline limits. WARNING: This can cause unexpected behaviour, so should only be used if the splines have been verified to have sensible behaviour outside of their range! -->
+  <allow_negative>  true                                          </allow_negative>   
+  <!-- Splines that go negative are no longer replaced with flat splines, but the weight cannot go below 0 -->
+  <set_neg_wght_to> 2e-10                                         </set_neg_wght_to>  
+  <!-- When we would get a negative weight from a spline, force it to this instead. -->
+</splines>
+
+\end{verbatim}
+}
+
+\subsection{Data Inputs}
+\label{sec:config/data}
+
+The XML associated with the inclusion of data (real or mock) has a similar but simplified set up as the MC XML above. It contains the data root file in one of three formats; a VALOR DST, a TH1D, or a VALOR Array. There is a series of Booleans that tell the fitter what format the data is given in. The binning XML from the main analysis configuration should also be included here, along with the relevant scheme name, if the data is presented in a TH1D. This allows the fitter to check the TH1D matches the binning scheme of the analysis.
+
+{\color{capri}
+\begin{verbatim}
+
+<data>
+
+  <default_binning> 
+    <file> binning/dummy_binning.xml </file>
+    <scheme> reco_optimized </scheme>
+  </default_binning>
+  
+  
+  <using_dst_format> 
+     false
+  </using_dst_format> 
+
+  <using_varray_format> 
+     false 
+  </using_varray_format> 
+
+  <using_hist_format> 
+     true 
+  </using_hist_format> 
+
+  <hist> 
+    <bnb_fhc>
+      <filename> dummy_data/mock_data/dummy_th1d.root </filename> 
+      <objname>  histogram    </objname> 
+      <objtype>  TH1D    </objtype> 
+    </bnb_fhc>
+  </hist>
+  
+</data>
+
+\end{verbatim}
+}
+
+\subsection{Specification of reaction modes}
+
+The reaction mode XMLs are specified in the MC configuration and located in `\$VALOR\_EXPT/config/modelists'. There is a fine list which contains every possible reaction mode and the coarse list which defines the groupings used for plotting along with the colour and fill style of that mode. Examples of a mode within each modelist type are shown below. As the name implies, the fine modelist contains significantly more elements than the coarse.
+
+Fine:
+{\color{capri}
+\begin{verbatim}
+
+  <mode> numuCCQE                      </mode>
+    
+\end{verbatim}
+}
+
+Coarse:
+{\color{capri}
+\begin{verbatim}
+
+  <coarse_mode>
+    <name>       numuCCQE  </name>
+    <line_col>   1         </line_col>
+    <fill_col>   0         </fill_col>
+    <fill_sty>   1001      </fill_sty>
+  </coarse_mode>
+    
+\end{verbatim}
+}
+
+\subsection{Specification of binning schemes}
+
+Binning XMLs are found in `\$VALOR\_EXPT/config/binning/'. The binning file that is included in the MC XML give a further list of binning XMLs (found in a further directory of `config/binning') that depend on the kinematic variable (true or reco) and the type of binning (optimised vs simple, edge- to-edge). An example of a specific binning scheme (Ereco, edge-to-edge) is given below.
+
+Types of binning: 
+Optimized and simple - explain.
+Edge-to-edge and Mondrian - explain.
+
+Reco $\rightarrow$ Optimized and simple 
+True $\rightarrow$ Simple only
+
+{\color{capri}
+\begin{verbatim}
+  <binning>
+    
+    <space>
+      Ereco
+    </space>
+  
+    <type>
+      edge-to-edge
+    </type>
+    
+    <Ereco_binning>
+      <bin_size> variable </bin_size>
+      <!--> including under and overflow bins <-->
+      <nbins>    21       </nbins>
+      <bin_edges>
+        0.0, 0.2, 0.3, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 10.0
+      </bin_edges>
+    </Ereco_binning>
+      
+  </binning>
+\end{verbatim}
+}
+
+\subsection{Verbosity level - Message stream thresholds}
+
+

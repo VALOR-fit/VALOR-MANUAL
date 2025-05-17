@@ -1,0 +1,1763 @@
+\section{Introduction and Code Architecture}
+
+The VALOR Software Development Kit (SDK) is a modular and extensible C++ framework for performing neutrino oscillation analysis and beyond-the-Standard-Model (BSM) searches. It was originally developed for the T2K experiment but has since been abstracted into a powerful, experiment-agnostic toolkit.
+
+This document serves as a comprehensive developer reference to the internal architecture of VALOR. It outlines the structure and purpose of each core package, describes key interfaces and implementation patterns, and provides practical details for extending the framework or adapting it to new experiments such as DUNE, JUNO, SBN, and Hyper-Kamiokande.
+
+\subsection{Design Principles}
+
+The VALOR SDK is designed to:
+\begin{itemize}
+  \item Decouple the core oscillation fitting logic from experiment-specific implementation.
+  \item Enable rapid deployment and validation of new physics models.
+  \item Support both frequentist and Bayesian fitting strategies with minimal code duplication.
+  \item Provide a systematic and transparent treatment of correlated uncertainties.
+  \item Scale to large data samples and high-dimensional parameter spaces.
+\end{itemize}
+
+\subsection{Code Structure Overview}
+
+The codebase is organised into logical packages, each encapsulating a major functional component of the VALOR analysis pipeline.
+
+Below is a summary of the key packages:
+
+\begin{description}
+
+  \item[\texttt{FitCore}] \hfill \\
+  Defines abstract base classes for models, data representations, likelihood calculations, and compound structures.
+  It serves as the architectural foundation of the SDK.
+
+  \item[\texttt{FitElements}] \hfill \\
+  Provides concrete implementations of single-sample fit components.
+  Connects oscillation model predictions to reconstructed observables using template-based input.
+
+  \item[\texttt{Oscillation}] \hfill \\
+  Implements 3-flavour and 3+1 sterile neutrino probability calculators.
+  Supports baseline/energy-dependent predictions, including matter effects.
+
+  \item[\texttt{Systematics}] \hfill \\
+  Provides infrastructure for defining, grouping, and applying systematic parameters.
+  Supports analytical derivative-based shifts and correlated uncertainty propagation.
+
+  \item[\texttt{Utilities}] \hfill \\
+  Common tools for string manipulation, XML parsing, system introspection, and math utilities.
+  Used across all other packages.
+
+  \item[\texttt{CmdLine}] \hfill \\
+  A lightweight argument parser used by VALOR front-end applications to extract flags and configuration file paths.
+
+  \item[\texttt{Ntuple}] \hfill \\
+  Stores fit results such as best-fit parameter vectors, covariance matrices, and likelihood scans into ROOT-compatible ntuples.
+
+  \item[\texttt{VArray}] \hfill \\
+  A general-purpose, N-dimensional array class with metadata support.
+  Used to represent predicted spectra, templates, and transformations.
+
+  \item[\texttt{GENIEUtilities}] \hfill \\
+  Provides access to GENIE MC truth-level records and event classification.
+  Used during MC preprocessing and mode tagging.
+
+  \item[\texttt{Fitters}] \hfill \\
+  Interfaces to optimisation backends (ROOT Minuit1/2, GSL).
+  Performs likelihood minimisation, MCMC, error propagation, and constraint handling.
+
+  \item[\texttt{Applications}] \hfill \\
+  A suite of executables (\texttt{valor-fit}, \texttt{valor-generate}, \texttt{valor-scan}, etc.) that wrap the SDK for interactive or batch processing.
+
+\end{description}
+
+Each package is documented in a dedicated section that follows, including class interfaces, design motivations, and usage examples.
+
+%
+%
+%
+
+\subsection{Package: \texttt{FitCore}}
+
+The {\color{cadmiumgreen} \textbf{FitCore}} package defines the core abstractions and implementations for oscillation fitting in the VALOR SDK.  
+It includes model interfaces, data containers, compound model builders, parameter structures, and sample metadata utilities.  
+These components form the backbone of the VALOR fitting engine and are shared by all experiments and systematics modules.
+
+\vspace{1em}
+
+\subsubsection*{Overview}
+
+\begin{itemize}
+  \item Provides the base class {\color{cadmiumgreen} \textbf{FitModelABC}} for all oscillation models
+  \item Supports both single-sample and multi-sample fits via {\color{cadmiumgreen} \textbf{SingleSampleFitModelABC}} and {\color{cadmiumgreen} \textbf{CompoundFitModel}}
+  \item Handles parameter registration, grouping, bounds, priors and step sizes
+  \item Facilitates experiment-agnostic model/data communication
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf FitModelABC}
+
+\textbf{Type:} Abstract Base Class
+
+\vspace{0.5em}
+This is the abstract interface for all VALOR oscillation models.  
+It defines key methods to configure the model, apply systematics, evaluate the likelihood, and manage parameter values.
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left, labelsep=0.6em]
+
+  \item[] {\color{cadmiumred} virtual double LogLikelihood() const = 0}
+
+  Returns the full log-likelihood including data-model comparison and any parameter priors.
+
+  \item[] {\color{cadmiumred} virtual void ApplySystematics() = 0}
+
+  Applies the currently configured systematics to modify the prediction.
+
+  \item[] {\color{cadmiumred} virtual void Configure(Detector, BeamConf, Sample, KineSpace)}
+
+  Sets metadata describing the detector, beam configuration, sample, and observable dimensions.
+
+  \item[] {\color{cadmiumred} virtual void Generate()}
+
+  Generates a prediction vector from the current configuration and parameters.
+
+  \item[] {\color{cadmiumred} virtual const std::vector<double>\& GetPrediction() const = 0}
+
+  Returns a reference to the internal predicted spectrum after systematics and oscillations.
+
+  \item[] {\color{cadmiumred} virtual void SetOscParamValue(std::string, double)}
+
+  Sets the value of a named oscillation parameter (e.g. {\color{amber}"theta23"}).
+
+  \item[] {\color{cadmiumred} virtual void SetSystConf(CorrelatedSystematics *, const std::string \&)}
+
+  Assigns the systematics configuration object. The second argument determines ownership ("adopt", "external", etc).
+
+  \item[] {\color{cadmiumred} virtual FitParamList * GetParamList()}
+
+  Returns a pointer to the internal parameter list associated with this model.
+
+  \item[] {\color{cadmiumred} virtual void Reset()}
+
+  Resets all systematics and clears cached results.
+
+\end{description}
+
+\vspace{0.5em}
+\noindent\textbf{Key Members:}
+
+\begin{itemize}
+  \item {\color{amber}fPrediction}: predicted bin contents
+  \item {\color{amber}fParamList}: associated list of parameters
+  \item {\color{amber}fSystematics}: pointer to systematics configuration
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf SingleSampleFitModelABC}
+
+\textbf{Type:} Abstract Base Class \\
+\textbf{Inherits from:} {\color{cadmiumgreen} FitModelABC}
+
+\vspace{0.5em}
+Provides additional structure for single-sample fits with mode decomposition, binning control, and topology-specific data handling.
+
+\vspace{0.5em}
+\noindent\textbf{Typical Use Case:}
+Used in per-topology analysis, e.g. $\nu_\mu$ CC-inclusive events in a single detector.
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf CompoundFitModel}
+
+\textbf{Type:} Concrete Class \\
+\textbf{Inherits from:} {\color{cadmiumgreen} FitModelABC}
+
+Combines multiple {\color{cadmiumgreen} SingleSampleFitModelABC} instances into a compound model for joint fits.
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} void AddSubModel(SingleSampleFitModelABC *)}
+
+  Registers a new sub-model into the compound structure.
+
+  \item[] {\color{cadmiumred} unsigned int GetNSubModels() const}
+
+  Returns the total number of sub-models currently stored.
+
+  \item[] {\color{cadmiumred} SingleSampleFitModelABC * SubModel(unsigned int)}
+
+  Returns a pointer to the $i$-th submodel in the compound.
+
+\end{description}
+
+\vspace{0.5em}
+\noindent\textbf{Typical Usage:}
+
+\begin{quote}
+\begin{lstlisting}
+auto compound = new CompoundFitModel();
+compound->AddSubModel(near_model);
+compound->AddSubModel(far_model);
+compound->SetSystConf(systematics);
+double chi2 = compound->LogLikelihood();
+\end{lstlisting}
+\end{quote}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf FitDataABC}
+
+\textbf{Type:} Abstract Base Class
+
+Defines the minimal interface for data vectors to be used in the likelihood.
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} virtual void Read(std::string filename)}
+
+  Reads data from an external file (e.g. {\it`data.xml`}).
+
+  \item[] {\color{cadmiumred} virtual std::vector<double> GetData() const}
+
+  Returns the contents of the data histogram.
+
+  \item[] {\color{cadmiumred} virtual void SetAssociatedModel(FitModelABC * m)}
+
+  Associates a model with this dataset (used for validation and consistency checks).
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf CompoundFitData}
+
+Manages a collection of {\color{cadmiumgreen} FitDataABC} objects and provides access to them for compound fits.
+
+\vspace{0.5em}
+\noindent\textbf{Key Members:}
+
+\begin{itemize}
+  \item {\color{amber}fDataBlocks}: vector of sample data blocks
+  \item {\color{amber}fName}: name identifier of the compound dataset
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf FitParamList}
+
+Manages a collection of fit parameters ({\color{cadmiumgreen} FitParam} objects), along with their metadata and priors.
+
+\vspace{0.5em}
+\noindent\textbf{Functionality:}
+
+\begin{itemize}
+  \item Add, fix, remove, or query parameters
+  \item Set bounds, priors, step sizes
+  \item Group parameters by logical roles (e.g. {\color{amber}"xsec"}, {\color{amber}"osc"})
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Example Usage:}
+
+\begin{quote}
+\begin{lstlisting}
+auto p = new FitParamList();
+p->Add("theta23", 0.6, 0.05, 0.3, 0.9);
+p->Fix("MAQE");
+p->SetGroup("xsec", "MAQE");
+\end{lstlisting}
+\end{quote}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf FitParam}
+
+Represents a single parameter in the fit. Contains:
+
+\begin{itemize}
+  \item {\color{amber}name}, {\color{amber}current\_value}, {\color{amber}prior}, {\color{amber}step}
+  \item Logical flags (e.g. {\color{amber}fixed}, {\color{amber}external})
+  \item Bounds ({\color{amber}lower}, {\color{amber}upper})
+\end{itemize}
+
+Used internally by {\color{cadmiumgreen} FitParamList} and fitter engines.
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf PhysParamList}
+
+A subclass of {\color{cadmiumgreen} FitParamList} used specifically for standard oscillation parameters.
+
+Includes:
+
+\begin{itemize}
+  \item {\color{amber}"theta13"}, {\color{amber}"theta23"}, {\color{amber}"dm32"}, {\color{amber}"deltaCP"}
+\end{itemize}
+
+Can be configured using standard flags (e.g. normal/inverted hierarchy).
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf FitParamBlock}
+
+Groups a set of related parameters (e.g. flux bins, detector bins).
+
+\begin{itemize}
+  \item Allows block-level correlation and matrix transformations
+  \item Supports common step sizes and constraints
+\end{itemize}
+
+Used frequently for multivariate systematics.
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf FitSampleID}
+
+A utility metadata object that tags a fit configuration using:
+
+\begin{itemize}
+  \item {\color{amber}Detector}
+  \item {\color{amber}BeamConf}
+  \item {\color{amber}Sample}
+  \item {\color{amber}Observable}
+\end{itemize}
+
+Supports comparison and hash indexing. Used to resolve template configurations and naming conventions.
+
+%
+%
+%
+
+\subsection{Package: \texttt{FitElements}}
+
+The {\color{cadmiumgreen} \textbf{FitElements}} package handles the construction and configuration of complete oscillation fits from external input definitions, typically stored in XML.
+
+It parses sample configurations, assigns models and datasets, applies systematic definitions, and produces compound fit objects that integrate seamlessly with the VALOR SDK’s core minimisation and output layers.
+
+This package acts as the entry point for assembling a full fit from configuration files, and plays a central role in ensuring reproducibility and modularity.
+
+\vspace{1em}
+\subsubsection*{Overview}
+
+\begin{itemize}
+  \item Parses XML to define fit elements (data, MC, observables)
+  \item Instantiates and configures models and data
+  \item Supports complex systematic combinations
+  \item Automatically builds {\color{cadmiumgreen} CompoundFitModel} and {\color{cadmiumgreen} CompoundFitData}
+  \item Can be extended to accommodate experiment-specific classes via plugin-like interfaces
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf CompoundFitElements}
+
+\textbf{Type:} Concrete Class \\
+\textbf{Role:} Fit configuration and construction from XML
+
+This class is the backbone of XML-based configuration in VALOR. It creates both the model and dataset components of the fit by reading a structured input file.
+
+\vspace{0.5em}
+\noindent\textbf{Main Responsibilities:}
+
+\begin{itemize}
+  \item Manage lists of fit samples via the {\color{amber}<element>} tag
+  \item Handle multiple samples under a common group name via {\color{amber}<element\_list>}
+  \item Parse systematics and parameter lists
+  \item Register the correct model and data classes via class names given in XML
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left, labelsep=0.6em]
+
+  \item[] {\color{cadmiumred} bool Read(std::string xmlfile, Option\_t * opt = "")}
+
+  Entry point: reads and parses a complete VALOR XML configuration.  
+  Produces both the {\color{cadmiumgreen} CompoundFitModel} and {\color{cadmiumgreen} CompoundFitData} as side effects.
+
+  \item[] {\color{cadmiumred} bool ReadElementList(TXMLEngine *, XMLNodePointer\_t top, Option\_t *)}
+
+  Parses an {\color{amber}<element\_list>} section. Loops through each {\color{amber}<element>} and delegates to {\color{cadmiumred} ReadElement()}.
+
+  \item[] {\color{cadmiumred} bool ReadElement(TXMLEngine *, XMLNodePointer\_t top, Option\_t *)}
+
+  Reads a single sample block: assigns detector, beam, sample name, observables, and file paths.  
+  Dynamically instantiates the correct classes using ROOT dictionaries.
+
+  \item[] {\color{cadmiumred} CorrelatedSystematics * ReadSystematicGroup(TXMLEngine *, XMLNodePointer\_t)}
+
+  Parses a systematic group node, returning a new {\color{cadmiumgreen} CorrelatedSystematics} instance.
+
+  \item[] {\color{cadmiumred} bool ReadParameterList(TXMLEngine *, XMLNodePointer\_t)}
+
+  Locates and loads a parameter definition file into the global {\color{cadmiumgreen} ParameterPool}.
+
+  \item[] {\color{cadmiumred} FitModelABC * AdoptFitModel(...)}
+
+  Uses class name from XML to instantiate a model object via ROOT's {\color{cadmiumgreen} TClass}.  
+  Configures its sample metadata and systematics.
+
+  \item[] {\color{cadmiumred} FitDataABC * AdoptFitData(...)}
+
+  Instantiates and configures the dataset object corresponding to the model.
+
+  \item[] {\color{cadmiumred} void * InstantiateUsingDictionaryRegistration(std::string class\_name)}
+
+  Dynamically creates a C++ object from a class name string using {\color{cadmiumgreen} TClass::New()}.  
+  Errors are reported via {\color{cadmiumgreen} Messenger}.
+
+\end{description}
+
+\vspace{0.5em}
+\noindent\textbf{Key Members:}
+
+\begin{itemize}
+  \item {\color{amber}CompoundFitModel * fCompoundFitModel}
+  \item {\color{amber}CompoundFitData * fCompoundFitData}
+  \item {\color{amber}bool fDataFileGiven}: set when XML defines a data file for a sample
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Typical XML Schema:}
+
+\begin{lstlisting}[language=xml]
+<valor>
+  <parameter_definitions>
+    <filename desc="Osc Params">params.xml</filename>
+  </parameter_definitions>
+
+  <systematics name="main_systs">
+    <group name="flux_uncertainty">
+      ...
+    </group>
+  </systematics>
+
+  <element_list name="DUNE-NDFit">
+    <element name="numu">
+      <detector>     dunend </detector>
+      <beam>         fhc    </beam>
+      <sample>       numucc </sample>
+      <observable>   Ereco,yreco </observable>
+      <data>         data.xml </data>
+      <mc>           mc.xml </mc>
+      <data_class>   valor::GenericSingleSampleData </data_class>
+      <model_class>  valor::GenericSingleSampleFitModel </model_class>
+    </element>
+  </element_list>
+</valor>
+\end{lstlisting}
+
+\vspace{0.5em}
+This layout enables flexible reuse across multiple experiments with only minimal editing of class names or input paths.
+
+\vspace{1em}
+\noindent\textbf{Namespace:} {\color{amber}valor::fitcore} \\
+\noindent\textbf{Typical Input:} {\it`config/juno\_atmo.xml`} or {\it`config/t2k\_jointfit.xml`}
+
+\vspace{1em}
+\subsubsection*{Notes on Extensibility}
+
+New data or model classes can be integrated without modifying {\color{cadmiumgreen} CompoundFitElements}.  
+As long as they are registered with ROOT’s dictionary system (e.g. via {\bf \tt \% rootcint} or {\bf \tt \% rootcling}), they can be referenced in XML via the {\color{amber}<data\_class>} and {\color{amber}<model\_class>} tags.
+
+For example:
+
+\begin{quote}
+{\color{amber}<model\_class>} {\color{cadmiumgreen} juno::AtmoFitModel} {\color{amber}</model\_class>}
+\end{quote}
+
+will instantiate a user-defined class {\color{cadmiumgreen} \textbf{juno::AtmoFitModel}}, assuming it inherits from {\color{cadmiumgreen} \textbf{SingleSampleFitModelABC}}.
+
+%
+%
+%
+
+\subsection{Package: \texttt{Oscillation}}
+
+The {\color{cadmiumgreen} \textbf{Oscillation}} package contains physics models for computing neutrino flavor transition probabilities in matter or vacuum.  
+It supports both 3-flavor and BSM (e.g. sterile) scenarios and provides interfaces to control oscillation parameters, compute probabilities, and define hypothesis spaces.
+
+This package is a core component of model building in VALOR, and is used by nearly every implementation of {\color{cadmiumgreen} FitModelABC}.
+
+\vspace{1em}
+\subsubsection*{Overview}
+
+\begin{itemize}
+  \item Implements standard neutrino oscillation physics in matter and vacuum
+  \item Defines oscillation parameter accessors
+  \item Provides fast and accurate evaluation of probabilities $P(\nu_\alpha \rightarrow \nu_\beta)$
+  \item Offers extensibility for non-standard interactions (NSI), sterile neutrinos, or parameter scans
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf OscillationProbabilityEngine}
+
+\textbf{Type:} Abstract Base Class \\
+\textbf{Role:} Interface for computing transition probabilities
+
+This is the abstract interface from which all probability engines inherit.  
+It allows calculation of transition probabilities given an energy, baseline, and initial/final flavor.
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left, labelsep=0.6em]
+
+  \item[] {\color{cadmiumred} virtual double P(int alpha, int beta, double E, double L) const = 0}
+
+  Computes the oscillation probability $P(\nu_\alpha \rightarrow \nu_\beta)$ at energy {\color{amber}E} and baseline {\color{amber}L}.
+
+  \item[] {\color{cadmiumred} virtual void SetParameters(const PhysParamList *) = 0}
+
+  Sets the list of parameters (e.g. {\color{amber}"theta13"}, {\color{amber}"deltaCP"}) used in calculation.
+
+  \item[] {\color{cadmiumred} virtual void SetMatterDensity(double rho) = 0}
+
+  Sets the constant matter density (in g/cm\textsuperscript{3}) for matter oscillation calculation.
+
+  \item[] {\color{cadmiumred} virtual void Configure(int nFlavor)}
+
+  Sets the number of flavors: 3 (standard), 4 (3+1), etc.
+
+\end{description}
+
+\vspace{0.5em}
+\noindent\textbf{Typical Usage:}
+
+\begin{lstlisting}
+OscillationProbabilityEngine * engine = new PMNS_3Flavor();
+engine->SetMatterDensity(2.65); // g/cm^3
+engine->SetParameters(param_list);
+double p = engine->P(kNuMu, kNuE, 0.7, 295.0); // E in GeV, L in km
+\end{lstlisting}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf PMNS\_3Flavor}
+
+\textbf{Type:} Concrete Class \\
+\textbf{Inherits from:} {\color{cadmiumgreen} OscillationProbabilityEngine}
+
+Implements 3-flavor oscillations in matter using standard PMNS mixing.  
+Includes correct treatment of matter effects via the Wolfenstein potential.
+
+\vspace{0.5em}
+\noindent\textbf{Physics Inputs:}
+\begin{itemize}
+  \item {\color{amber}"theta12"}, {\color{amber}"theta13"}, {\color{amber}"theta23"}
+  \item {\color{amber}"dm21"}, {\color{amber}"dm32"}
+  \item {\color{amber}"deltaCP"}
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Key Features:}
+\begin{itemize}
+  \item Numerically stable for all baselines and energies
+  \item Accurate to better than $10^{-5}$
+  \item Supports both NH and IH via sign of {\color{amber}"dm32"}
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf PMNS\_4Flavor}
+
+Extends {\color{cadmiumgreen} PMNS\_3Flavor} to include a single sterile neutrino state.  
+Uses 4$\times$4 mixing matrix and introduces new parameters:
+
+\begin{itemize}
+  \item {\color{amber}"theta14"}, {\color{amber}"theta24"}, {\color{amber}"theta34"}
+  \item {\color{amber}"delta14"}, {\color{amber}"delta24"}
+  \item {\color{amber}"dm41"}
+\end{itemize}
+
+Useful for fitting sterile oscillation hypotheses, e.g. in SBN.
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf OscChannel}
+
+Defines allowed oscillation transitions.  
+Used in parameter scans and appearance/disappearance definitions.
+
+\noindent\textbf{Fields:}
+
+\begin{itemize}
+  \item {\color{amber}int fromFlavor}
+  \item {\color{amber}int toFlavor}
+  \item {\color{amber}bool isAntiNeutrino}
+  \item {\color{amber}std::string label}
+\end{itemize}
+
+Supports hash comparison, serialization, and filter logic.
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf OscillationHypothesis}
+
+Bundles an {\color{cadmiumgreen} OscChannel} and {\color{amber}PhysParamList}.
+
+Used to evaluate a given probability configuration.  
+Can be used in scans or reweighting studies.
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf MatterPotential}
+
+A static utility class for computing the Wolfenstein matter potential $A = \pm 2\sqrt{2} G_F N_e E$.
+
+Supports both:
+\begin{itemize}
+  \item Constant matter density
+  \item Parameterized density profiles (e.g. Earth model)
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Functions:}
+
+\begin{description}[align=left, labelsep=0.6em]
+  \item[] {\color{cadmiumred} static double ElectronDensity(double rho, double Y\_e)}
+
+  Returns electron number density $N_e$ in mol/cm$^3$ from matter density $\rho$ and electron fraction $Y_e$.
+
+  \item[] {\color{cadmiumred} static double Potential(double E, double Ne)}
+
+  Computes matter potential (positive for neutrinos, negative for antineutrinos).
+\end{description}
+
+%
+%
+%
+
+\subsection{Package: \texttt{Systematics}}
+
+The {\color{cadmiumgreen} \textbf{Systematics}} package provides a comprehensive infrastructure for defining, organizing, and applying systematic uncertainties in VALOR fits.  
+It supports arbitrary systematics, grouped hierarchically, and applies them to fit predictions using a flexible parameter interface.
+
+Systematic variations are encoded in multi-dimensional templates and are propagated through the fit via derivative expansions or reweighting.
+
+\vspace{1em}
+\subsubsection*{Overview}
+
+\begin{itemize}
+  \item Defines systematics as parameterized effects on binned observables
+  \item Supports both bin-wise and global systematics
+  \item Allows for grouped and correlated systematic configurations
+  \item Systematics can be loaded from XML or constructed programmatically
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf SystematicShifter}
+
+\textbf{Type:} Abstract Base Class
+
+Encapsulates a generic shift on model predictions as a function of a single parameter.  
+Every systematic is implemented as a subclass of this interface.
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left, labelsep=0.6em]
+
+  \item[] {\color{cadmiumred} virtual void ApplyShift(std::vector<double>\& prediction, double paramValue) const = 0}
+
+  Modifies the input {\color{amber}prediction} vector according to the shift induced by {\color{amber}paramValue}.
+
+  \item[] {\color{cadmiumred} virtual std::string GetParameterName() const = 0}
+
+  Returns the name of the associated systematic parameter.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf TemplateShifter}
+
+A concrete implementation of {\color{cadmiumgreen} SystematicShifter} that applies shifts using templates.  
+Each template stores the derivative of the prediction with respect to the systematic parameter.
+
+\vspace{0.5em}
+\noindent\textbf{Features:}
+
+\begin{itemize}
+  \item Template is stored as $\partial P_i / \partial x$ for bin $i$ and parameter $x$
+  \item Supports linear, quadratic, or spline expansions
+  \item Fast evaluation at runtime
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf SystematicGroup}
+
+Groups a collection of related {\color{cadmiumgreen} SystematicShifter} objects under a common name.  
+Used to bundle systematics (e.g. "flux", "xsec") into higher-level configurations.
+
+\begin{itemize}
+  \item Supports tagging, lookup, and iteration
+  \item Can be nested hierarchically
+  \item Useful in XML configuration
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf CorrelatedSystematics}
+
+A container for one or more {\color{cadmiumgreen} SystematicGroup} objects.  
+This is the final object used by the model to apply systematics.
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left, labelsep=0.6em]
+
+  \item[] {\color{cadmiumred} void Read(TXMLEngine *, XMLNodePointer\_t)}
+
+  Parses an XML node describing the structure and contents of all groups.
+
+  \item[] {\color{cadmiumred} void Apply(std::vector<double>\& prediction, const FitParamList *) const}
+
+  Loops over all systematics and applies them according to the parameter values in the provided list.
+
+  \item[] {\color{cadmiumred} void AddSystematicGroup(SystematicGroup *)}
+
+  Adds a group of shifters to the collection.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf SystematicTemplate}
+
+Defines the bin-wise template for a specific systematic parameter on a given sample.  
+Represents the derivative $\partial P / \partial x$ or higher-order response.
+
+\noindent\textbf{Fields:}
+
+\begin{itemize}
+  \item {\color{amber}std::string paramName}
+  \item {\color{amber}std::vector<double>} derivative
+  \item {\color{amber}bool} useQuadratic
+\end{itemize}
+
+\noindent\textbf{Method:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} void ApplyTo(std::vector<double>\& prediction, double value) const}
+
+  Applies the shift as $P_i \rightarrow P_i + (\partial P_i/\partial x) \cdot x$.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{XML Configuration Example}
+
+A full systematic specification might look like:
+
+\begin{lstlisting}[language=xml]
+<systematics name="xsec_systematics">
+  <group name="MAQE_group">
+    <shifter name="MAQE">
+      <param> MAQE </param>
+      <template_file> templates/MAQE.root </template_file>
+    </shifter>
+  </group>
+</systematics>
+\end{lstlisting}
+
+\vspace{0.5em}
+This will be parsed into a {\color{cadmiumgreen} CorrelatedSystematics} containing one {\color{cadmiumgreen} SystematicGroup}, holding a {\color{cadmiumgreen} TemplateShifter} object that modifies the prediction with a template stored in {\it`templates/MAQE.root`}.
+
+\vspace{1em}
+\subsubsection*{Usage in Models}
+
+Every {\color{cadmiumgreen} FitModelABC} subclass receives a pointer to its active {\color{cadmiumgreen} CorrelatedSystematics} via:
+
+\begin{lstlisting}
+model->SetSystConf(mySystematics, "adopt");
+\end{lstlisting}
+
+The model then applies systematics before returning predictions or likelihoods.  
+This ensures that all parameter changes propagate through the correct set of templates.
+
+%
+%
+%
+
+\subsection{Package: \texttt{GENIEUtilities}}
+
+The {\color{cadmiumgreen} \textbf{GENIEUtilities}} package provides specialized tools and interfaces for working with GENIE event generator data within the VALOR SDK.  
+It facilitates parsing, binning, classification, and interpretation of GENIE-generated MC samples, both in GHEP (event-level) and ROOT histogram formats.
+
+This package enables seamless integration between GENIE’s output and VALOR’s fit infrastructure, including the construction of signal templates, mode decomposition, and truth binning.
+
+\vspace{1em}
+\subsubsection*{Overview}
+
+\begin{itemize}
+  \item Parses GENIE GHEP event files and ROOT trees
+  \item Implements GENIE-specific mode classification (QE, RES, DIS, COH, etc.)
+  \item Provides event selection and observable calculation tools
+  \item Used extensively by data classes in {\color{cadmiumgreen} SingleSampleFitDataABC}
+  \item Fully supports generator reweighting workflows
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf GENIEReweightHelper}
+
+\textbf{Type:} Utility Class
+
+Used to interface with GENIE’s internal reweighting machinery.  
+Manages creation, configuration, and execution of GENIE reweighting engines.
+
+\vspace{0.5em}
+\noindent\textbf{Main Responsibilities:}
+
+\begin{itemize}
+  \item Initialize GENIE reweight engine with parameter sets
+  \item Apply reweights to individual events or templates
+  \item Access error bands and weight variations
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} void ConfigureFromRegistry(const Registry \& reg)}
+
+  Loads systematic configuration from a {\color{cadmiumgreen} Registry} object.
+
+  \item[] {\color{cadmiumred} double ComputeWeight(const EventRecord \& event)}
+
+  Returns the total reweighting factor for a given GENIE event.
+
+  \item[] {\color{cadmiumred} void SetSystematicValue(const std::string \& name, double val)}
+
+  Overrides the central value of a specific systematic knob.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf GENIEModeClassifier}
+
+\textbf{Type:} Static Utility Class
+
+Provides logic to classify GENIE MC events into physics categories (modes).  
+This is used for building signal and background templates.
+
+\vspace{0.5em}
+\noindent\textbf{Classification Outputs:}
+
+\begin{itemize}
+  \item {\color{amber}"QE"} (quasielastic)
+  \item {\color{amber}"RES"} (resonant pion production)
+  \item {\color{amber}"DIS"} (deep inelastic scattering)
+  \item {\color{amber}"COH"} (coherent pion)
+  \item {\color{amber}"MEC"} (2p2h processes)
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} static std::string Classify(const EventRecord \& event)}
+
+  Returns the mode label string for a given event.
+
+  \item[] {\color{cadmiumred} static bool IsCCQE(const EventRecord \& event)}
+
+  Returns true if the event is charged-current quasielastic.
+
+  \item[] {\color{cadmiumred} static bool IsDIS(const EventRecord \& event)}
+
+  Returns true if DIS kinematics are detected.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf GHEPReader}
+
+Handles reading of GHEP event files (standard GENIE format).  
+Used by VALOR data loaders to fill kinematic templates.
+
+\vspace{0.5em}
+\noindent\textbf{Capabilities:}
+
+\begin{itemize}
+  \item Event iteration
+  \item Truth kinematics extraction
+  \item Event weight parsing (including reweights)
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} void OpenFile(const std::string \& fname)}
+
+  Opens a GHEP ROOT file for iteration.
+
+  \item[] {\color{cadmiumred} const EventRecord \& NextEvent()}
+
+  Returns the next event record.
+
+  \item[] {\color{cadmiumred} bool HasMoreEvents() const}
+
+  Returns true if more events remain.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf GENIEKinematicsUtils}
+
+Provides tools for computing reconstructed or truth observables from GENIE events.  
+This includes {\color{amber}Ereco}, {\color{amber}q0}, {\color{amber}Enu}, {\color{amber}Q2}, etc.
+
+\noindent\textbf{Typical Usage:}
+
+\begin{lstlisting}
+double q0 = GENIEKinematicsUtils::ComputeQ0(event);
+double recoE = GENIEKinematicsUtils::ReconstructedEnergy(event);
+\end{lstlisting}
+
+Used for filling both x- and y-axes of VALOR 2D templates.
+
+\vspace{1em}
+\subsubsection*{Integration in VALOR Workflow}
+
+The tools in this package are invoked primarily via {\color{cadmiumgreen} SingleSampleFitDataABC} or its subclasses.  
+During data/MC loading:
+
+\begin{itemize}
+  \item Events are read using {\color{cadmiumgreen} GHEPReader}
+  \item Modes are classified with {\color{cadmiumgreen} GENIEModeClassifier}
+  \item Observables are extracted using {\color{cadmiumgreen} GENIEKinematicsUtils}
+  \item Systematic variations applied via {\color{cadmiumgreen} GENIEReweightHelper}
+\end{itemize}
+
+The result is a set of well-classified, systematic-aware prediction templates used in VALOR fits.
+
+%
+%
+%
+
+\subsection{Package: \texttt{Messenger}}
+
+The {\color{cadmiumgreen} \textbf{Messenger}} package provides structured and configurable logging and messaging facilities for the VALOR SDK.  
+It is designed to offer fine-grained control over output verbosity, ensure consistency of diagnostic messages, and support different output targets during runtime.
+
+The message system can be toggled dynamically and is useful for debugging, reporting internal states, or alerting users to errors or misconfigurations.
+
+\vspace{1em}
+\subsubsection*{Overview}
+
+\begin{itemize}
+  \item Implements a flexible logging infrastructure for internal VALOR output
+  \item Supports verbosity levels (e.g. {\color{amber}pDEBUG}, {\color{amber}pNOTICE}, {\color{amber}pWARN}, {\color{amber}pERROR}, {\color{amber}pFATAL})
+  \item Uses macro-style message formatting for consistency and minimal runtime cost
+  \item Can selectively enable or suppress messages from specific components
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf Logger}
+
+\textbf{Type:} Singleton Utility Class
+
+Manages all message stream configurations.  
+Users interact with the system via macros, but the underlying routing is handled here.
+
+\vspace{0.5em}
+\noindent\textbf{Verbosity Levels:}
+
+\begin{itemize}
+  \item {\color{amber}pDEBUG}: lowest-level technical output
+  \item {\color{amber}pNOTICE}: general runtime status
+  \item {\color{amber}pWARN}: warnings of potential issues
+  \item {\color{amber}pERROR}: recoverable runtime errors
+  \item {\color{amber}pFATAL}: unrecoverable errors; often followed by {\bf \tt util::Die()}
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} static Logger * Instance()}
+
+  Returns the singleton instance of the logger.
+
+  \item[] {\color{cadmiumred} void SetPriorityLevel(std::string component, MessageLevel level)}
+
+  Changes the verbosity level for the specified component name (e.g. {\color{amber}"FitCore"}).
+
+  \item[] {\color{cadmiumred} void Suppress(std::string component)}
+
+  Disables all output for a given component.
+
+  \item[] {\color{cadmiumred} void Enable(std::string component)}
+
+  Re-enables output for a previously suppressed component.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf LOG Macro Usage}
+
+All messages in VALOR are emitted using the {\color{cadmiumgreen} LOG} macro, defined as:
+
+\begin{quote}
+{\bf \tt LOG("Component", level) << "Message content" ;}
+\end{quote}
+
+\noindent\textbf{Examples:}
+
+\begin{lstlisting}
+LOG("CompoundFitElements", pNOTICE) 
+  << "Found systematic group named: " << group_name;
+
+LOG("Oscillation", pERROR) 
+  << "Invalid channel index for 3-flavor model";
+\end{lstlisting}
+
+These macros expand only if the component and level are currently enabled, ensuring zero runtime cost if filtered out.
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf MessageLevel}
+
+An enumeration used to define logging priorities.
+
+\noindent\textbf{Values:}
+
+\begin{itemize}
+  \item {\color{amber}pDEBUG = 1}
+  \item {\color{amber}pNOTICE = 2}
+  \item {\color{amber}pWARN = 3}
+  \item {\color{amber}pERROR = 4}
+  \item {\color{amber}pFATAL = 5}
+\end{itemize}
+
+Used in both C++ logic and XML-controlled verbosity configuration.
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf Configuration Example}
+
+To suppress messages from the GENIE utilities while debugging only the fit core:
+
+\begin{lstlisting}
+Logger::Instance()->Suppress("GENIEUtilities");
+Logger::Instance()->SetPriorityLevel("FitCore", pDEBUG);
+\end{lstlisting}
+
+\noindent Alternatively, control can be provided via runtime config options or environment variables (if implemented).
+
+\vspace{1em}
+\subsubsection*{Use in Other Packages}
+
+The {\color{cadmiumgreen} Messenger} system is used throughout the VALOR SDK.
+This consistent message layer simplifies debugging and runtime transparency.
+
+%
+%
+%
+
+\subsection{Package: \texttt{Utilities}}
+
+The {\color{cadmiumgreen} \textbf{Utilities}} package provides a collection of core utility classes and helper functions used throughout the VALOR SDK.  
+These include tools for file and path management, string manipulation, system interfacing, mathematical routines, and environment variable handling.  
+Though not directly tied to the physics fitting logic, these tools ensure portability, maintainability, and consistent behavior across all modules.
+
+\vspace{1em}
+\subsubsection*{Overview}
+
+\begin{itemize}
+  \item Provides OS-agnostic file and environment utilities
+  \item Includes matrix algebra wrappers (e.g. eigen decomposition)
+  \item Offers date/time utilities for logging and diagnostics
+  \item Facilitates string parsing, trimming, tokenization, and conversion
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf UtlStr}
+
+\textbf{Type:} Static Utility Class
+
+Contains common string handling routines used in file parsing, logging, and user configuration.
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} static std::string TrimSpaces(const std::string \& s)}
+
+  Removes leading and trailing whitespace.
+
+  \item[] {\color{cadmiumred} static std::vector<std::string> Split(const std::string \& s, char delim)}
+
+  Splits a string into tokens based on a delimiter.
+
+  \item[] {\color{cadmiumred} static bool StartsWith(const std::string \& full, const std::string \& prefix)}
+
+  Returns {\color{amber}true} if the string {\color{amber}full} begins with {\color{amber}prefix}.
+
+  \item[] {\color{cadmiumred} static std::string ToUpper(const std::string \& s)}
+
+  Converts a string to uppercase.
+
+  \item[] {\color{cadmiumred} static std::string ToLower(const std::string \& s)}
+
+  Converts a string to lowercase.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf UtlSystem}
+
+\textbf{Type:} Static Utility Class
+
+Interfaces with the operating system to handle directories, shell calls, file paths, and environment variables.
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} static bool FileExists(const std::string \& path)}
+
+  Returns {\color{amber}true} if the file exists at the given path.
+
+  \item[] {\color{cadmiumred} static std::string ExpandEnvVars(const std::string \& path)}
+
+  Substitutes occurrences of {\bf \tt \$VALOR\_SDK} or similar environment variables in a file path string.
+
+  \item[] {\color{cadmiumred} static std::string GetCurrentDateTime()}
+
+  Returns a human-readable date-time string for logs.
+
+  \item[] {\color{cadmiumred} static std::string AbsolutePath(const std::string \& relpath)}
+
+  Converts a relative path to an absolute path using the current working directory.
+
+  \item[] {\color{cadmiumred} static void CreateDirectoryIfMissing(const std::string \& path)}
+
+  Ensures that a directory exists, creating it if needed.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf UtlMath}
+
+\textbf{Type:} Static Utility Class
+
+Provides numerical tools that wrap or extend standard libraries.  
+Used in matrix algebra, eigen decomposition, and numerical comparisons.
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} static bool AreEqual(double a, double b, double tolerance = 1e-6)}
+
+  Returns {\color{amber}true} if two floating point values are within the given tolerance.
+
+  \item[] {\color{cadmiumred} static std::vector<double> EigenValues(const std::vector<std::vector<double>> \& cov)}
+
+  Computes eigenvalues of a symmetric matrix (uses GSL or ROOT’s {\color{cadmiumgreen} TMatrixDSym}).
+
+  \item[] {\color{cadmiumred} static std::vector<double> CovToStdDev(const std::vector<std::vector<double>> \& cov)}
+
+  Extracts standard deviations from a covariance matrix.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf UtlFile}
+
+Tools for reading and writing structured data files, such as configuration fragments or template paths.
+
+\vspace{0.5em}
+\noindent\textbf{Example Usage:}
+
+\begin{lstlisting}
+if (!UtlSystem::FileExists("templates/myfile.root")) {
+  LOG("Utilities", pWARN) << "Template file not found.";
+}
+\end{lstlisting}
+
+\vspace{1em}
+\subsubsection*{Typical Use in SDK}
+
+This package is used across nearly all other components.
+All utility functions are designed to be header-only or minimal in linkage dependencies.
+
+%
+%
+%
+
+\subsection{Package: \texttt{FitterEngines}}
+
+The {\color{cadmiumgreen} \textbf{FitterEngines}} package implements the fitting backends of the VALOR SDK.  
+These engines handle the numerical minimisation or sampling of the likelihood function using various algorithms, including grid scans, Minuit minimisation, and MCMC.
+
+Each fitter interacts with the {\color{cadmiumgreen} FitModelABC} interface to compute the log-likelihood and manage parameter updates.  
+This separation of model and engine allows the same physics model to be probed using different statistical strategies.
+
+\vspace{1em}
+\subsubsection*{Overview}
+
+\begin{itemize}
+  \item Defines a common fitter interface
+  \item Implements grid, random, adaptive MCMC, and Minuit-based engines
+  \item Provides tools for result extraction, convergence diagnostics, and profiling
+  \item Designed to be modular and extensible
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf FitterABC}
+
+\textbf{Type:} Abstract Base Class
+
+Defines the interface for any statistical engine operating on a {\color{cadmiumgreen} FitModelABC}.  
+All concrete fitters must derive from this class.
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} virtual void Run() = 0}
+
+  Executes the fitter — this is where the scan, minimisation, or sampling occurs.
+
+  \item[] {\color{cadmiumred} void SetModel(FitModelABC * model)}
+
+  Sets the target model for likelihood evaluation.
+
+  \item[] {\color{cadmiumred} void SetOutputDirectory(std::string path)}
+
+  Where results (e.g. chains, profile likelihoods) will be stored.
+
+  \item[] {\color{cadmiumred} void AddParameter(FitParam *)}
+
+  Registers a parameter to be varied in the fit.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf GridFitter}
+
+Performs brute-force likelihood scans across a multi-dimensional grid.  
+Useful for visualising degeneracies or testing fitter stability.
+
+\noindent\textbf{Key Controls:}
+\begin{itemize}
+  \item Parameter ranges
+  \item Number of grid points
+  \item Output binning for visualisation
+\end{itemize}
+
+\noindent\textbf{Limitations:}  
+Intractable in high dimensions ($\geq 5$) due to exponential scaling.
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf MinuitFitter}
+
+Wraps the {\color{cadmiumgreen} ROOT::Minuit2} backend to perform local minimisation.  
+Includes support for parameter bounds, error estimation, and Hessian output.
+
+\noindent\textbf{Typical Usage:}
+
+\begin{lstlisting}
+MinuitFitter * fitter = new MinuitFitter();
+fitter->SetModel(myModel);
+fitter->AddParameter(theta23);
+fitter->Run();
+\end{lstlisting}
+
+\vspace{0.5em}
+\noindent\textbf{Output:}
+\begin{itemize}
+  \item Best-fit parameter values
+  \item Error matrix (if converged)
+  \item Fit status and messages
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf MCMCFitter}
+
+Implements a Metropolis-Hastings MCMC engine for posterior sampling.  
+Supports burn-in, adaptive proposals, autocorrelation diagnostics, and marginal likelihood estimation.
+
+\vspace{0.5em}
+\noindent\textbf{Key Features:}
+
+\begin{itemize}
+  \item Multiple chains with different seeds
+  \item Proposal covariance adaptation
+  \item Diagnostics: acceptance rate, autocorrelation, trace plots
+  \item Supports importance reweighting
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Output:}
+
+Results stored as ASCII chains:
+
+\begin{quote}
+{\it`chains/run1/chain\_0.txt'}
+\end{quote}
+
+Each row contains:
+
+\begin{itemize}
+  \item Step number
+  \item Parameter values
+  \item Log-likelihood
+  \item Acceptance flag
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf AdaptiveMCMCFitter}
+
+Improves on {\color{cadmiumgreen} MCMCFitter} by dynamically tuning the proposal distribution during burn-in.  
+Tends to converge faster and produces better mixing in high dimensions.
+
+\vspace{0.5em}
+\noindent\textbf{Main Algorithm:}
+\begin{itemize}
+  \item Start with diagonal proposal
+  \item Update proposal covariance using empirical chain statistics
+  \item Switch to fixed proposal after burn-in
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf FitResults}
+
+A lightweight container for the outputs of any fitter.  
+Stores best-fit values, uncertainties, likelihoods, and chain summaries.
+
+\noindent\textbf{Main Fields:}
+
+\begin{itemize}
+  \item {\color{amber}std::map<std::string, double>} bestFitValues
+  \item {\color{amber}TMatrixD} covarianceMatrix
+  \item {\color{amber}double} bestLogLikelihood
+\end{itemize}
+
+\noindent\textbf{Usage:}
+
+Accessed via:
+
+\begin{lstlisting}
+FitResults * results = fitter->GetResults();
+double th13_best = results->Value("theta13");
+\end{lstlisting}
+
+
+
+%
+%
+%
+
+\subsection{Package: \texttt{VArray}}
+
+The {\color{cadmiumgreen} \textbf{VArray}} package provides a compact and efficient internal container for managing multidimensional arrays and histograms within the VALOR SDK.  
+It is designed to operate as a lightweight abstraction over flattened {\color{cadmiumgreen} std::vector}-based storage, supporting both 1D and 2D binning, fast access, and operations relevant to fitting and template manipulation.
+
+These classes are used extensively in representing MC templates, systematic derivatives, and bin-based observables for both reconstructed and truth spaces.
+
+\vspace{1em}
+\subsubsection*{Overview}
+
+\begin{itemize}
+  \item Implements 1D and 2D histogram-like arrays with bin indexing logic
+  \item Enables fast memory access and transformation of template arrays
+  \item Used internally for fit prediction storage, derivatives, and systematic shifts
+  \item Not intended to replace full-featured histogram packages like {\color{cadmiumgreen} TH1D}, but provides lean performance and flexibility
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf VArray1D}
+
+\textbf{Type:} Concrete Class
+
+Encapsulates a 1D histogram-like array using flat storage.  
+Supports bin access, underflow/overflow handling, and vectorized operations.
+
+\vspace{0.5em}
+\noindent\textbf{Main Fields:}
+
+\begin{itemize}
+  \item {\color{amber}std::vector<double>} contents
+  \item {\color{amber}int} nBins
+  \item {\color{amber}double} min, max
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Key Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} int FindBin(double x) const}
+
+  Returns the bin index corresponding to the value {\color{amber}x}.
+
+  \item[] {\color{cadmiumred} double GetBinContent(int i) const}
+
+  Returns the content of bin {\color{amber}i}.
+
+  \item[] {\color{cadmiumred} void SetBinContent(int i, double val)}
+
+  Sets the bin content of bin {\color{amber}i} to {\color{amber}val}.
+
+  \item[] {\color{cadmiumred} void Scale(double factor)}
+
+  Scales all bins by a constant factor.
+
+  \item[] {\color{cadmiumred} double Integral() const}
+
+  Computes the sum over all bins.
+
+\end{description}
+
+\vspace{0.5em}
+\noindent\textbf{Usage Example:}
+
+\begin{lstlisting}
+VArray1D reco_hist(40, 0.0, 2.0); // 40 bins from 0 to 2 GeV
+int bin = reco_hist.FindBin(1.3);
+reco_hist.SetBinContent(bin, 5.0);
+double total = reco_hist.Integral();
+\end{lstlisting}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf VArray2D}
+
+Extends the logic of {\color{cadmiumgreen} VArray1D} to two dimensions.  
+Supports indexing by {\color{amber}(x, y)} or flattened bin index.  
+Commonly used in MC template storage and truth–reco mappings.
+
+\vspace{0.5em}
+\noindent\textbf{Main Fields:}
+
+\begin{itemize}
+  \item {\color{amber}std::vector<double>} contents
+  \item {\color{amber}int} nBinsX, nBinsY
+  \item {\color{amber}double} xMin, xMax, yMin, yMax
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} int FindBinX(double x) const}, {\color{cadmiumred} int FindBinY(double y) const}
+
+  Finds bin index in each axis.
+
+  \item[] {\color{cadmiumred} int FlattenedIndex(int ix, int iy) const}
+
+  Converts 2D indices to a linear storage index.
+
+  \item[] {\color{cadmiumred} double GetBinContent(int ix, int iy) const}
+
+  Retrieves content at {\color{amber}(ix, iy)}.
+
+  \item[] {\color{cadmiumred} void Add(const VArray2D \& other)}
+
+  Adds another 2D array bin-by-bin.
+
+  \item[] {\color{cadmiumred} void Normalize()}
+
+  Normalizes contents to unit integral.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf VArrayOperations}
+
+Provides element-wise operations on {\color{cadmiumgreen} VArray1D} and {\color{cadmiumgreen} VArray2D} objects, such as:
+
+\begin{itemize}
+  \item Addition, subtraction
+  \item Scaling, multiplication
+  \item Dot products
+  \item Chi-squared comparisons
+\end{itemize}
+
+Used internally in likelihood evaluations and systematic effect propagation.
+
+\vspace{0.5em}
+\noindent\textbf{Example:}
+
+\begin{lstlisting}
+double chi2 = VArrayOperations::Chi2(data_hist, mc_hist);
+\end{lstlisting}
+
+\vspace{1em}
+\subsubsection*{Integration in SDK}
+
+{\color{cadmiumgreen} VArray1D} and {\color{cadmiumgreen} VArray2D} are used as internal structures for:
+
+\begin{itemize}
+  \item Prediction templates in {\color{cadmiumgreen} FitModelABC}
+  \item Data and MC histograms in {\color{cadmiumgreen} FitDataABC}
+  \item Systematic shift templates
+  \item Binned observable spaces (e.g. {\color{amber}Ereco}, {\color{amber}q0})
+\end{itemize}
+
+These structures offer a flexible and lightweight alternative to heavier histogram classes, enabling fast memory access and compatibility with GPU-accelerated workflows (if desired in future upgrades).
+
+%
+%
+%
+
+\subsection{Package: \texttt{CmdLine}}
+
+The {\color{cadmiumgreen} \textbf{CmdLine}} package provides a simple and extensible command-line argument parsing utility used by VALOR SDK applications.  
+It allows VALOR executables such as {\it valor-mcmc}, {\it valor-profile1d}, and others to accept flexible runtime arguments for steering the analysis workflow.
+
+It abstracts typical parsing needs such as option flags, value retrieval, usage display, and type-safe conversions — avoiding external dependencies while maintaining usability.
+
+\vspace{1em}
+\subsubsection*{Overview}
+
+\begin{itemize}
+  \item Lightweight command-line parsing with no external dependencies
+  \item Supports short and long-form options (e.g. {\bf \tt -f}, {\bf \tt --file})
+  \item Provides automatic help text and error handling
+  \item Type-safe retrieval for integers, floats, strings, and booleans
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen} \bf CmdLineParser}
+
+\textbf{Type:} Concrete Class
+
+Used in VALOR applications to declare and parse allowed command-line options.  
+All logic is centralized in this class.
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} void AddOption(std::string name, std::string desc, bool required = false)}
+
+  Declares a valid option with a human-readable description.  
+  If {\color{amber}required} is {\tt true}, the parser will exit if the option is missing.
+
+  \item[] {\color{cadmiumred} void Parse(int argc, char ** argv)}
+
+  Parses the command-line arguments provided to {\color{cadmiumgreen} main()}.  
+  Reports usage on failure.
+
+  \item[] {\color{cadmiumred} std::string Get(std::string name) const}
+
+  Retrieves the value of a string option by name.
+
+  \item[] {\color{cadmiumred} int GetInt(std::string name) const}
+
+  Retrieves an integer option value.
+
+  \item[] {\color{cadmiumred} double GetDouble(std::string name) const}
+
+  Retrieves a floating-point option value.
+
+  \item[] {\color{cadmiumred} bool GetBool(std::string name) const}
+
+  Returns true if the boolean flag was set.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen} \bf Typical Usage}
+
+\begin{lstlisting}
+CmdLineParser cmd;
+cmd.AddOption("model", "Oscillation model XML file", true);
+cmd.AddOption("output", "Path for storing fit results");
+cmd.Parse(argc, argv);
+
+std::string modelFile = cmd.Get("model");
+std::string outDir = cmd.Get("output");
+\end{lstlisting}
+
+The above snippet enables a VALOR executable to accept:
+
+\begin{quote}
+{\bf \tt ./valor-fit --model myfit.xml --output ./results/}
+\end{quote}
+
+\vspace{1em}
+\subsubsection*{Error Handling and Help Output}
+
+If a required option is not provided, the parser will:
+
+\begin{itemize}
+  \item Display a usage message with all declared options
+  \item Exit cleanly with status code {\color{amber}1}
+\end{itemize}
+
+This helps ensure reproducible and user-friendly CLI behavior in all VALOR SDK tools.
+
+\vspace{1em}
+\subsubsection*{Integration in VALOR Applications}
+
+The {\color{cadmiumgreen} CmdLine} package is used in all standalone VALOR applications, such as:
+
+\begin{itemize}
+  \item {\it valor-mcmc} — controls number of steps, output chain path, and proposal configuration
+  \item {\it valor-gridscan} — selects model, scan parameters, and range
+  \item {\it valor-compare} — defines the input files for template comparison
+\end{itemize}
+
+This modularity also enables unit testing of applications with stub arguments.
+
+\vspace{1em}
+\noindent\textbf{Note:} This parser is purposefully kept minimal and does not include complex features like subcommand dispatch or input file globbing. For full control, users can preprocess arguments externally and pass them through environment variables or XML inputs.
+
+%
+%
+%
+
+\subsection{Package: \texttt{Ntuple}}
+
+The {\color{cadmiumgreen} \textbf{Ntuple}} package provides tools for managing event-based ROOT {\color{cadmiumgreen} TTree} data within the VALOR SDK.  
+It facilitates reading, parsing, and interpreting ntuple-based Monte Carlo (MC) or data inputs — typically structured as reconstructed observables or MC truth information — used in oscillation analyses and template construction.
+
+This package abstracts common patterns in ROOT I/O and reduces boilerplate code for ntuple interaction across fit configurations.
+
+\vspace{1em}
+\subsubsection*{Overview}
+
+\begin{itemize}
+  \item Encapsulates logic for ROOT {\color{cadmiumgreen} TTree} reading and access
+  \item Supports structured access to reconstructed and MC truth observables
+  \item Integrates with VALOR’s {\color{cadmiumgreen} FitDataABC} infrastructure
+  \item Streamlines the loading of templates and the construction of binned distributions
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf NtupleReader}
+
+\textbf{Type:} Concrete Class
+
+Provides an interface to read entries from ROOT ntuples, map branches to observables, and iterate over events.
+
+\vspace{0.5em}
+\noindent\textbf{Main Fields:}
+
+\begin{itemize}
+  \item {\color{amber}TFile *} file
+  \item {\color{amber}TTree *} tree
+  \item {\color{amber}std::map<std::string, float *>} branchMap
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\textbf{Key Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} void OpenFile(const std::string \& filename)}
+
+  Opens the ROOT file and retrieves the associated tree.
+
+  \item[] {\color{cadmiumred} void SetBranch(std::string var)}
+
+  Sets up access to a branch named {\color{amber}var}.  
+  Internally calls {\color{cadmiumgreen} SetBranchAddress}.
+
+  \item[] {\color{cadmiumred} bool GetEntry(int i)}
+
+  Loads the $i$-th entry from the tree.
+
+  \item[] {\color{cadmiumred} float Get(std::string var)}
+
+  Returns the value of the observable named {\color{amber}var} from the current entry.
+
+  \item[] {\color{cadmiumred} int GetEntries() const}
+
+  Returns the total number of entries in the tree.
+
+\end{description}
+
+\vspace{0.5em}
+\noindent\textbf{Typical Usage:}
+
+\begin{lstlisting}
+NtupleReader reader;
+reader.OpenFile("data/atmospheric_mc.root");
+reader.SetBranch("Ereco");
+reader.SetBranch("coszen");
+
+for (int i = 0; i < reader.GetEntries(); ++i) {
+    reader.GetEntry(i);
+    float E = reader.Get("Ereco");
+    float z = reader.Get("coszen");
+    // Fill into templates or apply cuts
+}
+\end{lstlisting}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf ObservableMapper}
+
+Handles mapping between branch names and standard VALOR observables.  
+Used to translate experiment-specific variable names (e.g. {\color{amber}"Erec\_QE"}, {\color{amber}"lep\_zenith"}) into internally recognized identifiers (e.g. {\color{amber}"Ereco"}, {\color{amber}"coszen"}).
+
+\noindent\textbf{Main Purpose:}
+\begin{itemize}
+  \item Decouple naming conventions between experiments and VALOR analysis logic
+  \item Provide flexibility across experiments with differing ntuple schemas
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{\color{cadmiumgreen}\bf NtupleToTemplateConverter}
+
+Bridges the ntuple data with VALOR’s template framework.  
+Loops over an ntuple, fills binned observables, and stores the result into a {\color{cadmiumgreen} VArray2D} prediction.
+
+\vspace{0.5em}
+\noindent\textbf{Main Methods:}
+
+\begin{description}[align=left]
+
+  \item[] {\color{cadmiumred} void Configure(const Binning \& reco, const Binning \& truth)}
+
+  Sets the binning schemes for the template axes.
+
+  \item[] {\color{cadmiumred} void Convert(NtupleReader \&, VArray2D \&)}
+
+  Loops over entries, extracts observable pairs, and fills the target template.
+
+\end{description}
+
+\vspace{1em}
+\subsubsection*{Integration with FitDataABC}
+
+The {\color{cadmiumgreen} Ntuple} package is invoked internally in subclasses of {\color{cadmiumgreen} SingleSampleFitDataABC}, where it:
+
+\begin{itemize}
+  \item Loads event-level MC files
+  \item Bins reconstructed and truth observables into templates
+  \item Associates each sample with its mode-specific prediction
+\end{itemize}
+
+\vspace{1em}
+\subsubsection*{Supported Observables}
+
+Typical branch mappings supported include:
+
+\begin{itemize}
+  \item {\color{amber}Ereco} — reconstructed neutrino energy
+  \item {\color{amber}yreco} — inelasticity proxy
+  \item {\color{amber}coszen} — reconstructed cosine zenith angle
+  \item {\color{amber}Et} — true neutrino energy
+  \item {\color{amber}yt} — true inelasticity
+\end{itemize}
+
+Users may extend this list in experiment-specific readers by customizing the {\color{cadmiumgreen} ObservableMapper}.
+
+\vspace{1em}
+\subsubsection*{File Format Requirements}
+
+Input ROOT files must contain a {\color{cadmiumgreen} TTree} with numeric branches.  
+Each VALOR analysis defines its expected schema in XML or through code-level convention.
+
+\noindent Example file structure:
+
+\begin{itemize}
+  \item {\it`/data/atmo/juno\_mc.root`} $\rightarrow$ {\color{cadmiumgreen} TTree} {\it"Events"}
+  \item Branches: {\color{amber}Erec}, {\color{amber}Et}, {\color{amber}coszen}, {\color{amber}weight}
+\end{itemize}
+
